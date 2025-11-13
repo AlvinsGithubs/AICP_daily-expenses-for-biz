@@ -1,0 +1,21 @@
+.venv*/
+*.venv/
+
+# Python 캐시
+__pycache__/
+*.pyc
+
+# Streamlit 로컬 설정
+.streamlit/
+
+# [가장 중요] 비밀번호 파일
+.env
+*.env
+
+# [가장 중요] 데이터 및 보고서
+analysis_history/
+*.json
+
+# [예외] 단, '도시 설정' 파일은 GitHub에 올려서 관리합니다.
+# 이 파일은 DB처럼 사용되므로 원격에 백업되어야 합니다.
+!target_cities_config.json

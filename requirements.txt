@@ -1,0 +1,11 @@
+streamlit
+pandas
+PyMuPDF
+tabulate
+openai
+python-dotenv
+httpx
+geopy
+pydeck
+altair
+psycopg2-binary
