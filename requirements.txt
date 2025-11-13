@@ -9,3 +9,4 @@ geopy
 pydeck
 altair
 psycopg2-binary
+sqlalchemy
