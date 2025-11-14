@@ -499,6 +499,72 @@ def set_target_city_entries(entries: List[Dict[str, Any]]) -> None:
     st.session_state["target_cities_entries"] = [normalize_target_entry(item) for item in entries]
 # --- [v20.0 DB연동] 끝 ---
 
+def auto_fill_all_city_coordinates() -> tuple[int, int]:
+    """
+    target_cities 중 lat/lon 없는 도시들 좌표를 geopy 로 자동 채우고
+    DB + session_state 에 저장한 뒤 (성공 개수, 실패 개수)를 반환.
+    """
+    try:
+        geolocator = Nominatim(user_agent=f"aicp_app_{random.randint(1000,9999)}")
+    except Exception as e:
+        st.error(f"Geopy(Nominatim) 초기화 실패: {e}")
+        return 0, 0
+
+    current_entries = get_target_city_entries()
+    entries_to_update = [e for e in current_entries if not e.get("lat") or not e.get("lon")]
+
+    if not entries_to_update:
+        return 0, 0
+
+    success_count = 0
+    fail_count = 0
+
+    progress_bar = st.progress(0, text="좌표 자동 완성 시작...")
+
+    with st.spinner("도시 좌표를 하나씩 불러오는 중... (시간이 걸릴 수 있습니다)"):
+        for i, entry in enumerate(entries_to_update):
+            city = entry["city"]
+            country = entry["country"]
+            query = f"{city}, {country}"
+
+            try:
+                location = geolocator.geocode(query, timeout=5)
+                time.sleep(1)  # Nominatim rate limit
+
+                if location:
+                    entry["lat"] = location.latitude
+                    entry["lon"] = location.longitude
+                    st.toast(
+                        f"✅ 성공: {query} ({location.latitude:.4f}, {location.longitude:.4f})",
+                        icon="🌍",
+                    )
+                    success_count += 1
+                else:
+                    st.toast(
+                        f"⚠️ 실패: {query}의 좌표를 찾을 수 없습니다.",
+                        icon="❓",
+                    )
+                    fail_count += 1
+            except (GeocoderTimedOut, GeocoderUnavailable):
+                st.toast(
+                    f"❌ 오류: {query} 요청 시간 초과. 잠시 후 다시 시도하세요.",
+                    icon="🔥",
+                )
+                fail_count += 1
+            except Exception as e:
+                st.toast(f"❌ 오류: {query} ({e})", icon="🔥")
+                fail_count += 1
+
+            progress_bar.progress(
+                (i + 1) / len(entries_to_update), text=f"처리 중: {query}"
+            )
+
+    # DB + 세션에 저장
+    set_target_city_entries(current_entries)
+    progress_bar.empty()
+    return success_count, fail_count
+
+
 
 def get_target_cities_grouped(entries: Optional[List[Dict[str, Any]]] = None) -> Dict[str, List[Dict[str, Any]]]:
     entries = entries or get_target_city_entries()
@@ -1215,7 +1281,7 @@ with dashboard_tab:
                         st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
                     st.rerun()
 
-                map_data = pd.DataFrame(columns=required_map_cols)  # 아래에서 empty 처리
+                map_data = pd.DataFrame(columns=required_map_cols)
             else:
                 map_data = df_merged.copy()
                 map_data = map_data[required_map_cols]
