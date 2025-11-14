@@ -450,9 +450,11 @@ def normalize_target_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 # --- [v20.0 DB연동] Target Cities 함수 (DB 기반) ---
 def load_target_city_entries() -> List[Dict[str, Any]]:
-    """DB에서 모든 도시 목록을 로드합니다."""
-    # Phase 1의 SQL로 이미 기본값이 DB에 있으므로, 파일 로직(DEFAULT_TARGET_CITY_ENTRIES) 제거
-    df = conn.query("SELECT * FROM target_cities ORDER BY region, country, city", ttl=10) # 10초 캐시
+    """DB에서 모든 도시 목록을 로드하되, 비어 있으면 기본값으로 폴백."""
+    df = conn.query("SELECT * FROM target_cities ORDER BY region, country, city", ttl=10)
+    if df.empty:
+        # DB 비어 있으면 코드에 박혀 있는 DEFAULT_TARGET_CITY_ENTRIES 사용
+        return [normalize_target_entry(e) for e in DEFAULT_TARGET_CITY_ENTRIES]
     return df.to_dict('records')
 
 def save_target_city_entries(entries: List[Dict[str, Any]]) -> None:
