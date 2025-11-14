@@ -675,23 +675,17 @@ def save_report_data(data):
     filename = f"report_{timestamp}.json"  # 이름은 고유 식별자로 사용
 
     try:
+        # JSON 문자열로 먼저 변환
         report_json = json.dumps(data)
 
-        # conn.insert 대신 직접 SQL로 INSERT
-        with conn.session as s:
-            s.execute(
-                text(
-                    """
-                    INSERT INTO analysis_reports (name, report_data, created_at)
-                    VALUES (:name, :report_data::jsonb, NOW())
-                    """
-                ),
-                params={
-                    "name": filename,
-                    "report_data": report_json,
-                },
-            )
-            s.commit()
+        # conn.insert 를 이용해 간단하게 INSERT
+        df = pd.DataFrame([{
+            "name": filename,
+            "report_data": report_json,  # JSONB 컬럼이어도 문자열을 넣으면 Postgres가 캐스팅해 줍니다.
+            # created_at 은 테이블 DEFAULT NOW() 가 있으니 굳이 넣지 않아도 됨
+        }])
+
+        conn.insert("analysis_reports", df)
 
     except Exception as e:
         st.error(f"DB 보고서 저장 실패: {e}")
