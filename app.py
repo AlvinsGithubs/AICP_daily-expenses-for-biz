@@ -1266,8 +1266,12 @@ with dashboard_tab:
             )
             
             required_map_cols = ['city', 'country', 'lat', 'lon', 'final_allowance']
-            
-            if not all(col in df_merged.columns for col in ['lat', 'lon']):
+
+            # 머지 후 어느 컬럼에 lat/lon 이 들어있는지 찾아서 사용
+            lat_candidates = [c for c in ["lat", "lat_config", "lat_report"] if c in df_merged.columns]
+            lon_candidates = [c for c in ["lon", "lon_config", "lon_report"] if c in df_merged.columns]
+
+            if not lat_candidates or not lon_candidates:
                 st.warning(
                     "Coordinate (lat/lon) data for the map is missing. 🗺️\n\n"
                     "아래 버튼을 눌러 모든 도시 좌표를 자동으로 생성한 뒤 지도를 다시 그립니다."
@@ -1283,12 +1287,18 @@ with dashboard_tab:
 
                 map_data = pd.DataFrame(columns=required_map_cols)
             else:
+                # 실제 존재하는 컬럼 이름을 lat/lon 으로 통일해서 사용
+                lat_col = lat_candidates[0]
+                lon_col = lon_candidates[0]
+
                 map_data = df_merged.copy()
+                map_data = map_data.rename(columns={lat_col: "lat", lon_col: "lon"})
                 map_data = map_data[required_map_cols]
                 map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
                 map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
                 map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
                 map_data.dropna(subset=['lat', 'lon'], inplace=True)
+
 
             if map_data.empty:
                 st.caption("No data to display on the map. (Check if coordinates were generated.)")
