@@ -21,6 +21,8 @@ import asyncio  # [개선 1] 비동기 처리를 위한 라이브러리
 from collections import Counter
 from statistics import StatisticsError, mean, quantiles, stdev  # [신규 1] stdev 추가
 from typing import Any, Dict, List, Optional, Set, Tuple
+from sqlalchemy import text
+
 
 import altair as alt  # [신규 2] 고급 차트 라이브러리
 import pydeck as pdk  # [신규 2] 고급 3D 지도 라이브러리
@@ -205,6 +207,14 @@ def update_weight_config(un_weight: float, ai_weight: float) -> Dict[str, float]
         pass
     return normalized
 # --- [v20.0 DB연동] 끝 ---
+def load_weight_config() -> Dict[str, float]:
+    """
+    (Backwards compatibility)
+    예전 파일 기반 함수 이름을 그대로 쓰되,
+    실제 구현은 DB 기반 get_weight_config()를 사용합니다.
+    """
+    return get_weight_config()
+
 
 
 # 분석 결과를 저장할 디렉터리 경로
