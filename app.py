@@ -779,11 +779,37 @@ def process_tsv_data(tsv_content):
             "trip_lengths": DEFAULT_TRIP_LENGTH.copy(),
         }
         found_row = None
-        search_target = target
-        is_substitute = "un_dsa_substitute" in target
-        if is_substitute: search_target = target["un_dsa_substitute"]
-        
-        country_df = df[df['Country'].str.contains(search_target['country'], case=False, na=False)]
+
+        # --- [수정] un_dsa_substitute 값 안전하게 처리 ---
+        sub_raw = target.get("un_dsa_substitute")
+
+        sub_value = None
+        if isinstance(sub_raw, dict):
+            sub_value = sub_raw
+        elif isinstance(sub_raw, str) and sub_raw.strip():
+            # JSON 문자열로 들어온 경우 대비
+            try:
+                sub_value = json.loads(sub_raw)
+            except Exception:
+                sub_value = None
+
+        if (
+            isinstance(sub_value, dict)
+            and sub_value.get("city")
+            and sub_value.get("country")
+        ):
+            # 유효한 대체 도시 정보가 있을 때만 사용
+            search_target = sub_value
+            is_substitute = True
+        else:
+            # 없으면 원래 도시 사용
+            search_target = target
+            is_substitute = False
+        # --- [수정 끝] ---
+
+        country_df = df[
+            df["Country"].str.contains(search_target["country"], case=False, na=False)
+        ]
         if not country_df.empty:
             target_city_lower = search_target["city"].lower()
             target_alias = CITY_ALIASES.get(target_city_lower, target_city_lower)
