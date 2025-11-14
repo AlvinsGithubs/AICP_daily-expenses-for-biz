@@ -672,16 +672,27 @@ def get_history_files() -> List[str]:
 def save_report_data(data):
     """분석 결과를 DB(JSONB)에 저장합니다."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"report_{timestamp}.json" # 이름은 고유 식별자로 사용
-    
+    filename = f"report_{timestamp}.json"  # 이름은 고유 식별자로 사용
+
     try:
-        # report_data(dict)를 JSON 문자열로 변환
-        report_json = json.dumps(data) 
-        
-        # DataFrame으로 변환 후 insert
-        df_new = pd.DataFrame([{"name": filename, "report_data": report_json}])
-        conn.insert("analysis_reports", df_new)
-        
+        report_json = json.dumps(data)
+
+        # conn.insert 대신 직접 SQL로 INSERT
+        with conn.session as s:
+            s.execute(
+                text(
+                    """
+                    INSERT INTO analysis_reports (name, report_data, created_at)
+                    VALUES (:name, :report_data::jsonb, NOW())
+                    """
+                ),
+                params={
+                    "name": filename,
+                    "report_data": report_json,
+                },
+            )
+            s.commit()
+
     except Exception as e:
         st.error(f"DB 보고서 저장 실패: {e}")
 
