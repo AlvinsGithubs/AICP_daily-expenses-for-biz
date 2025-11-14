@@ -36,6 +36,15 @@ from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 # 이 연결은 Streamlit의 Secrets에서 "connections.supabase_db" 설정을 자동으로 읽어옵니다.
 conn = st.connection("supabase_db", type="sql", dialect="postgresql")
 
+
+from datetime import date, datetime
+
+def _json_default(obj):
+    """report_data를 JSON으로 저장할 때, 날짜/시간 타입을 문자열로 변환."""
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    return obj  # 나머지는 기본 동작 (에러 나면 그때 확인)
+
 # --- [v20.0 DB연동] data_sources.menu_cache.py 기능 대체 ---
 # 이제 'menu_cache.py' 파일은 더 이상 필요하지 않습니다.
 def load_cached_menu_prices(
@@ -678,7 +687,7 @@ def save_report_data(data):
 
     try:
         # JSON 문자열로 먼저 변환
-        report_json = json.dumps(data)
+        report_json = json.dumps(data, default=_json_default)
 
         # conn.insert 를 이용해 간단하게 INSERT
         df = pd.DataFrame([{
