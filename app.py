@@ -1206,7 +1206,7 @@ else:
     st.session_state.employee_sections_visibility = _normalize_employee_sections(st.session_state.employee_sections_visibility)
 employee_sections_visibility = st.session_state.employee_sections_visibility
 
-# --- [NEW] Global Admin Access + Tab Layout (Sidebar Version) ---
+# --- [NEW] Global Admin Access + Tab Layout (v21.1) ---
 
 # .env 에 ADMIN_ACCESS_CODE 가 없으면 전체 앱 중단
 if not ACCESS_CODE_VALUE:
@@ -1219,29 +1219,70 @@ if not ACCESS_CODE_VALUE:
 # 현재 Admin 로그인 상태
 is_admin = bool(st.session_state.get(ACCESS_CODE_KEY, False))
 
-# 1) 좌측 사이드바: Access Code 입력
-with st.sidebar:
-    st.markdown("### Admin Access")
-    with st.form("sidebar_admin_access_form", clear_on_submit=True):
+# 0) 좌측 사이드바: 로그인 / 로그아웃 UI (기본 닫힘)
+with st.sidebar.expander("🔐 Admin Access", expanded=False):
+    if not is_admin:
         code_input = st.text_input(
             "Access Code",
             type="password",
             placeholder="Enter admin code",
+            key="sidebar_admin_code",
         )
-        submitted = st.form_submit_button("Enter")
-
-    if submitted:
-        if code_input == ACCESS_CODE_VALUE:
-            st.session_state[ACCESS_CODE_KEY] = True
-            st.success("Access granted. Admin tabs unlocked.")
+        if st.button("Login", key="sidebar_admin_login_btn"):
+            if code_input == ACCESS_CODE_VALUE:
+                st.session_state[ACCESS_CODE_KEY] = True
+                st.success("Access granted. Admin tabs unlocked.")
+                st.rerun()
+            else:
+                st.error("The Access Code is incorrect.")
+    else:
+        st.markdown("✅ **Admin mode is active.**")
+        if st.button("Logout", key="sidebar_admin_logout_btn"):
+            # 관리자 세션 해제
+            st.session_state[ACCESS_CODE_KEY] = False
+            # 로그아웃 시 직원용 탭은 항상 보이도록(Per Diem Inquiry만 남도록)
+            st.session_state["employee_tab_visibility"] = True
+            st.success("You have been logged out.")
             st.rerun()
-        else:
-            st.error("The Access Code is incorrect.")
+
+# 1) 상단 탭 레이아웃
+top_left, _ = st.columns([6, 2])
+
+with top_left:
+    tab_definitions = []
+
+    # (1) 직원용 탭 – 기본 첫 탭
+    employee_tab_visible = bool(
+        st.session_state.get("employee_tab_visibility", stored_employee_tab_visible)
+    )
+    if employee_tab_visible:
+        tab_definitions.append("💵 Per Diem Inquiry (Employee)")
+
+    # (2) Admin 탭 – 로그인 상태에서만 표시
+    if is_admin:
+        tab_definitions.append("📈 Report Analysis (Admin)")
+        tab_definitions.append("🛠️ System Settings (Admin)")
+        tab_definitions.append("📊 Executive Dashboard (Admin)")
+
+    # 탭이 하나도 없을 경우를 대비한 fallback
+    if not tab_definitions:
+        tab_definitions.append("🔒 Admin Login")
+
+    tabs = st.tabs(tab_definitions)
+
+    # 탭 인덱스 매핑
+    employee_tab = admin_analysis_tab = admin_config_tab = dashboard_tab = None
+    idx = 0
+
+    if employee_tab_visible:
+        employee_tab = tabs[idx]
+        idx += 1
 
     if is_admin:
-        st.caption("✅ Admin mode is active.")
-    else:
-        st.caption("🔒 Enter the Access Code to unlock admin-only tabs.")
+        admin_analysis_tab = tabs[idx]; idx += 1
+        admin_config_tab   = tabs[idx]; idx += 1
+        dashboard_tab      = tabs[idx]; idx += 1
+
 
 # 2) 메인 영역: 탭 레이아웃
 tab_definitions = []
