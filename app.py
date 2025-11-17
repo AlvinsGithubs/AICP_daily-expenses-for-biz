@@ -485,15 +485,26 @@ def save_target_city_entries(entries: List[Dict[str, Any]]) -> None:
             df_new = pd.DataFrame(entries)
             df_new = df_new.drop(columns=["id", "created_at"], errors='ignore')
 
-            # un_dsa_substitute 컬럼이 있다면, dict 가 아닌 값은 모두 None 처리
+            # ---------- ✨ 여기부터 추가/수정 부분 ✨ ----------
+
+            # NaN → None 으로 통일 (특히 un_dsa_substitute 컬럼의 NaN 방지)
+            df_new = df_new.where(pd.notnull(df_new), None)
+
+            # un_dsa_substitute 컬럼: dict/list → JSON 문자열로 변환
             if "un_dsa_substitute" in df_new.columns:
-                df_new["un_dsa_substitute"] = df_new["un_dsa_substitute"].apply(
-                    lambda v: v if isinstance(v, dict) else None
-                )
+                def _normalize_sub(v):
+                    # dict/list 는 json.dumps
+                    if isinstance(v, (dict, list)):
+                        return json.dumps(v)
+                    return v  # None 이나 기존 문자열은 그대로
+                df_new["un_dsa_substitute"] = df_new["un_dsa_substitute"].apply(_normalize_sub)
+
+            # ---------- ✨ 추가/수정 끝 ✨ ----------
 
             _bulk_insert_dataframe("target_cities", df_new)
     except Exception as e:
         st.error(f"DB 도시 목록 저장 실패: {e}")
+
 
 def _bulk_insert_dataframe(table_name: str, df: pd.DataFrame) -> None:
     """
