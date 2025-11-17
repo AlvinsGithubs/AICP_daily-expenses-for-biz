@@ -13,6 +13,16 @@ import re
 import fitz  # PyMuPDF 라이브러리
 import openai
 from dotenv import load_dotenv
+
+
+# --- [공통] Admin Access Code 설정 (전역) ---
+ACCESS_CODE_KEY = "admin_access_code_valid"
+ACCESS_CODE_VALUE = os.getenv("ADMIN_ACCESS_CODE")  # .env에서 로드
+# ------------------------------------------------
+
+# Maximum number of AI calls per analysis
+NUM_AI_CALLS = 10
+
 import io
 from datetime import datetime, timedelta
 import time
@@ -1201,37 +1211,68 @@ else:
 employee_sections_visibility = st.session_state.employee_sections_visibility
 
 
-# --- [Improvement 3 & New 2] Tab structure change (v18.0) ---
-tab_definitions = [
-    "📊 Executive Dashboard", # [New 2] Dashboard tab added
-]
+# --- [Improvement 3 & New 2] Tab structure change (v18.0, updated) ---
 
+tab_definitions = []
+
+# 1) 직원용 탭 (옵션)
 if employee_tab_visible:
     tab_definitions.append("💵 Per Diem Inquiry (Employee)")
 
-# Split admin tab into two
+# 2) Admin용 탭들
 tab_definitions.append("📈 Report Analysis (Admin)")
 tab_definitions.append("🛠️ System Settings (Admin)")
 
+# 3) Executive Dashboard를 맨 마지막, Admin용으로 배치
+tab_definitions.append("📊 Executive Dashboard (Admin)")
+
 tabs = st.tabs(tab_definitions)
 
-# Assign tab variables
-dashboard_tab = tabs[0]
-tab_index_offset = 1
-
+# 탭 인덱스 매핑
+idx = 0
 if employee_tab_visible:
-    employee_tab = tabs[tab_index_offset]
-    admin_analysis_tab = tabs[tab_index_offset + 1]
-    admin_config_tab = tabs[tab_index_offset + 2]
-    tab_index_offset += 1
+    employee_tab = tabs[idx]
+    idx += 1
 else:
     employee_tab = None
-    admin_analysis_tab = tabs[tab_index_offset]
-    admin_config_tab = tabs[tab_index_offset + 1]
+
+admin_analysis_tab = tabs[idx]
+idx += 1
+
+admin_config_tab = tabs[idx]
+idx += 1
+
+dashboard_tab = tabs[idx]   # 마지막 탭이 Executive Dashboard
+# --- [End of modification] ---
+
 
 # --- [End of modification] ---
 
 with dashboard_tab:
+    # --- [NEW] Admin Access Guard for Executive Dashboard ---
+    if not ACCESS_CODE_VALUE:
+        st.error(
+            "Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. "
+            "Please stop the app and set the .env file."
+        )
+        st.stop()
+
+    if not st.session_state.get(ACCESS_CODE_KEY, False):
+        st.warning("This dashboard is for administrators only. Please enter the Access Code.")
+        with st.form("admin_access_form_dashboard"):
+            input_code = st.text_input("Access Code", type="password")
+            submitted = st.form_submit_button("Enter")
+        if submitted:
+            if input_code == ACCESS_CODE_VALUE:
+                st.session_state[ACCESS_CODE_KEY] = True
+                st.success("Access granted.")
+                st.rerun()
+            else:
+                st.error("The Access Code is incorrect.")
+                st.stop()
+        else:
+            st.stop()
+    # --- [NEW END] ---
     st.header("Global Cost Dashboard")
     st.info("Visualizes the global business trip cost status based on the latest report data.")
 
@@ -1682,10 +1723,6 @@ if employee_tab is not None:
 # --- [Improvement 2] Changed admin_tab -> admin_analysis_tab ---
 with admin_analysis_tab:
     
-    # [Improvement 2] Load ADMIN_ACCESS_CODE and check .env
-    ACCESS_CODE_KEY = "admin_access_code_valid"
-    ACCESS_CODE_VALUE = os.getenv("ADMIN_ACCESS_CODE") # Load from .env
-
     if not ACCESS_CODE_VALUE:
         st.error("Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. Please stop the app and set the .env file.")
         st.stop()
