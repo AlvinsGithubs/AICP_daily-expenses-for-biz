@@ -1325,40 +1325,40 @@ if dashboard_tab is not None:
                 )
                 
                 # --- [신규] 지도용 데이터는 리포트 JSON(lat/lon)을 직접 사용 ---
-                required_map_cols = ['city', 'country', 'lat', 'lon', 'final_allowance']
+            required_map_cols = ['city', 'country', 'lat', 'lon', 'final_allowance']
 
-                # 리포트에는 country_display 라고 되어 있으니 country로 이름만 바꿔줌
-                df_report_map = df_report.copy()
-                df_report_map.rename(columns={"country_display": "country"}, inplace=True)
+            # 리포트에는 country_display 라고 되어 있으니 country로 이름만 바꿔줌
+            df_report_map = df_report.copy()
+            df_report_map.rename(columns={"country_display": "country"}, inplace=True)
 
-                # lat/lon + final_allowance 컬럼이 있는지 체크
-                if not {'lat', 'lon', 'final_allowance'}.issubset(df_report_map.columns):
-                    st.warning(
-                        "이 리포트에는 지도에 사용할 좌표(lat/lon) 정보가 저장되어 있지 않습니다. 🗺️\n\n"
-                        "📌 'Report Analysis (Admin)' 탭에서 AI 분석을 **최신 버전 코드로 다시 실행**하면, "
-                        "좌표가 리포트에 함께 저장되고 이후부터는 지도가 자동으로 표시됩니다."
+            # lat/lon + final_allowance 컬럼이 있는지 체크
+            if not {'lat', 'lon', 'final_allowance'}.issubset(df_report_map.columns):
+                st.warning(
+                    "이 리포트에는 지도에 사용할 좌표(lat/lon) 정보가 저장되어 있지 않습니다. 🗺️\n\n"
+                    "📌 'Report Analysis (Admin)' 탭에서 AI 분석을 **최신 버전 코드로 다시 실행**하면, "
+                    "좌표가 리포트에 함께 저장되고 이후부터는 지도가 자동으로 표시됩니다."
+                )
+
+                # 👉 System Settings 의 '모든 도시 좌표 자동 완성' 과 **동일한 기능**
+                if st.button("좌표 다시 불러오기", key="reload_coords_from_dashboard"):
+                    success_count, fail_count = auto_fill_all_city_coordinates()
+
+                    if success_count == 0 and fail_count == 0:
+                        st.success("모든 도시에 이미 좌표가 설정되어 있습니다. (업데이트 불필요)")
+                    else:
+                        st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
+
+                    st.info(
+                        "좌표를 업데이트한 후, 'Report Analysis (Admin)' 탭에서 AI 분석을 "
+                        "최신 버전으로 다시 실행하면 새 리포트에 좌표가 포함되고, 지도에 반영됩니다."
                     )
 
-                    # 👉 System Settings 의 '모든 도시 좌표 자동 완성' 과 **동일한 기능**
-                    if st.button("좌표 다시 불러오기", key="reload_coords_from_dashboard"):
-                        success_count, fail_count = auto_fill_all_city_coordinates()
-
-                        if success_count == 0 and fail_count == 0:
-                            st.success("모든 도시에 이미 좌표가 설정되어 있습니다. (업데이트 불필요)")
-                        else:
-                            st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
-
-                        st.info(
-                            "좌표를 업데이트한 후, 'Report Analysis (Admin)' 탭에서 AI 분석을 "
-                            "최신 버전으로 다시 실행하면 새 리포트에 좌표가 포함되고, 지도에 반영됩니다."
-                        )
-
-                    map_data = pd.DataFrame(columns=required_map_cols)
-                else:
-                    map_data = df_report_map[["city", "country", "lat", "lon", "final_allowance"]].copy()
-                    map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
-                    map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
-                    map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
+                map_data = pd.DataFrame(columns=required_map_cols)
+            else:
+                map_data = df_report_map[["city", "country", "lat", "lon", "final_allowance"]].copy()
+                map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
+                map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
+                map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
 
 
                 # 이후 로직은 그대로 유지
