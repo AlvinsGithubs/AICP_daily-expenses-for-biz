@@ -14,7 +14,6 @@ import fitz  # PyMuPDF 라이브러리
 import openai
 from dotenv import load_dotenv
 
-
 import io
 from datetime import datetime, timedelta
 import time
@@ -113,8 +112,6 @@ def save_cached_menu_prices(all_samples: List[Dict[str, Any]]) -> bool:
 
 MENU_CACHE_ENABLED = True # DB를 사용하므로 항상 활성화
 # --- [v20.0 DB연동] 끝 ---
-
-# --- 초기 환경 설정 ---
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -1251,13 +1248,16 @@ with dashboard_tab:
             "Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. "
             "Please stop the app and set the .env file."
         )
-        st.stop()
+        st.stop()  # 이건 진짜 에러라서 그대로 두셔도 됩니다.
 
-    if not st.session_state.get(ACCESS_CODE_KEY, False):
+    is_admin = st.session_state.get(ACCESS_CODE_KEY, False)
+
+    if not is_admin:
         st.warning("This dashboard is for administrators only. Please enter the Access Code.")
         with st.form("admin_access_form_dashboard"):
             input_code = st.text_input("Access Code", type="password")
             submitted = st.form_submit_button("Enter")
+
         if submitted:
             if input_code == ACCESS_CODE_VALUE:
                 st.session_state[ACCESS_CODE_KEY] = True
@@ -1265,9 +1265,6 @@ with dashboard_tab:
                 st.rerun()
             else:
                 st.error("The Access Code is incorrect.")
-                st.stop()
-        else:
-            st.stop()
     # --- [NEW END] ---
     st.header("Global Cost Dashboard")
     st.info("Visualizes the global business trip cost status based on the latest report data.")
