@@ -1787,47 +1787,33 @@ if employee_tab is not None:
                     else:
                         st.info("The administrator has hidden the detailed calculation basis.")
 
-# --- [Improvement 2] Changed admin_tab -> admin_analysis_tab ---
+# --- Admin: Report Analysis 탭 전체 코드 ---
 if admin_analysis_tab is not None:
     with admin_analysis_tab:
-        # 여기서는 Access Code 이미 통과한 상태라고 가정
+        # 여기서는 이미 사이드바에서 Admin 로그인 검증이 끝난 상태라고 가정합니다.
         st.subheader("Report Version Management")
 
         history_files = get_history_files()
-        if not ACCESS_CODE_VALUE:
-            st.error("Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. Please stop the app and set the .env file.")
-            st.stop()
-        
-        if not st.session_state.get(ACCESS_CODE_KEY, False):
-            with st.form("admin_access_form"):
-                input_code = st.text_input("Access Code", type="password")
-                submitted = st.form_submit_button("Enter")
-            if submitted:
-                if input_code == ACCESS_CODE_VALUE:
-                    st.session_state[ACCESS_CODE_KEY] = True
-                    st.success("Access granted.")
-                    st.rerun() # [Improvement 3] Rerun on success
-                else:
-                    st.error("The Access Code is incorrect.")
-                    st.stop() # [Improvement 3] Stop on failure
-            else:
-                st.stop() # [Improvement 3] Stop before form submission
 
-        # --- [Improvement 3] "Report Version Management" feature (analysis_sub_tab) ---
+        # --- [섹션 1] 활성 리포트 버전 선택 ---
         st.subheader("Report Version Management")
-        history_files = get_history_files()
         if history_files:
             if "selected_report_file" not in st.session_state:
                 st.session_state["selected_report_file"] = history_files[0]
             if st.session_state["selected_report_file"] not in history_files:
                 st.session_state["selected_report_file"] = history_files[0]
             default_index = history_files.index(st.session_state["selected_report_file"])
-            selected_file = st.selectbox("Select the active report version:", history_files, index=default_index, key="admin_report_file_select")
+            selected_file = st.selectbox(
+                "Select the active report version:",
+                history_files,
+                index=default_index,
+                key="admin_report_file_select",
+            )
             st.session_state["selected_report_file"] = selected_file
         else:
             st.info("No reports have been generated.")
 
-        # --- [New 4] Past Report Comparison feature (analysis_sub_tab) ---
+        # --- [섹션 2] 과거 리포트 비교 ---
         st.divider()
         st.subheader("Compare Past Reports")
         if len(history_files) < 2:
@@ -1835,10 +1821,20 @@ if admin_analysis_tab is not None:
         else:
             col_a, col_b = st.columns(2)
             with col_a:
-                file_a = st.selectbox("Base Report (A)", history_files, index=1, key="compare_a")
+                file_a = st.selectbox(
+                    "Base Report (A)",
+                    history_files,
+                    index=1 if len(history_files) > 1 else 0,
+                    key="compare_a",
+                )
             with col_b:
-                file_b = st.selectbox("Comparison Report (B)", history_files, index=0, key="compare_b")
-            
+                file_b = st.selectbox(
+                    "Comparison Report (B)",
+                    history_files,
+                    index=0,
+                    key="compare_b",
+                )
+
             if st.button("Compare Reports"):
                 if file_a == file_b:
                     st.warning("You must select two different reports.")
@@ -1846,62 +1842,120 @@ if admin_analysis_tab is not None:
                     with st.spinner("Comparing reports..."):
                         data_a = load_report_data(file_a)
                         data_b = load_report_data(file_b)
-                        
-                        if data_a and data_b and 'cities' in data_a and 'cities' in data_b:
-                            df_a = pd.DataFrame(data_a['cities'])[['city', 'country_display', 'final_allowance']]
-                            df_b = pd.DataFrame(data_b['cities'])[['city', 'country_display', 'final_allowance']]
-                            
-                            df_merged = pd.merge(df_a, df_b, on=["city", "country_display"], suffixes=("_A", "_B"))
-                            
-                            report_a_label = file_a.split('report_')[-1].split('.')[0]
-                            report_b_label = file_b.split('report_')[-1].split('.')[0]
 
-                            df_merged[f"A ({report_a_label})"] = df_merged["final_allowance_A"]
-                            df_merged[f"B ({report_b_label})"] = df_merged["final_allowance_B"]
-                            
-                            df_merged["Change ($)"] = df_merged["final_allowance_B"] - df_merged["final_allowance_A"]
-                            
+                        if (
+                            data_a
+                            and data_b
+                            and "cities" in data_a
+                            and "cities" in data_b
+                        ):
+                            df_a = pd.DataFrame(data_a["cities"])[
+                                ["city", "country_display", "final_allowance"]
+                            ]
+                            df_b = pd.DataFrame(data_b["cities"])[
+                                ["city", "country_display", "final_allowance"]
+                            ]
+
+                            df_merged = pd.merge(
+                                df_a,
+                                df_b,
+                                on=["city", "country_display"],
+                                suffixes=("_A", "_B"),
+                            )
+
+                            report_a_label = (
+                                file_a.split("report_")[-1].split(".")[0]
+                            )
+                            report_b_label = (
+                                file_b.split("report_")[-1].split(".")[0]
+                            )
+
+                            df_merged[f"A ({report_a_label})"] = df_merged[
+                                "final_allowance_A"
+                            ]
+                            df_merged[f"B ({report_b_label})"] = df_merged[
+                                "final_allowance_B"
+                            ]
+
+                            df_merged["Change ($)"] = (
+                                df_merged["final_allowance_B"]
+                                - df_merged["final_allowance_A"]
+                            )
+
                             # Prevent division by zero
-                            df_merged["Change (%)"] = (df_merged["Change ($)"] / df_merged["final_allowance_A"].replace(0, pd.NA)) * 100
-                            
-                            st.dataframe(df_merged[[
-                                "city", "country_display", 
-                                f"A ({report_a_label})", 
-                                f"B ({report_b_label})", 
-                                "Change ($)", "Change (%)"
-                            ]].style.format({"Change (%)": "{:,.1f}%", "Change ($)": "{:,.0f}"}), width="stretch")
+                            df_merged["Change (%)"] = (
+                                df_merged["Change ($)"]
+                                / df_merged["final_allowance_A"].replace(
+                                    0, pd.NA
+                                )
+                                * 100
+                            )
+
+                            st.dataframe(
+                                df_merged[
+                                    [
+                                        "city",
+                                        "country_display",
+                                        f"A ({report_a_label})",
+                                        f"B ({report_b_label})",
+                                        "Change ($)",
+                                        "Change (%)",
+                                    ]
+                                ]
+                                .style.format(
+                                    {
+                                        "Change (%)": "{:,.1f}%",
+                                        "Change ($)": "{:,.0f}",
+                                    }
+                                ),
+                                width="stretch",
+                            )
                         else:
                             st.error("Failed to load report files.")
-        
-        # --- [Improvement 3] "UN-DSA (PDF) Analysis" feature (analysis_sub_tab) ---
+
+        # --- [섹션 3] UN-DSA PDF 분석 + AI 실행 ---
         st.divider()
         st.subheader("UN-DSA (PDF) Analysis & AI Execution")
-        st.warning(f"Note that the AI will be called {NUM_AI_CALLS} times, which will consume time and cost. (Improvement 1: Async processing for faster speed)")
-        uploaded_file = st.file_uploader("Upload UN-DSA PDF file.", type="pdf")
+        st.warning(
+            f"Note that the AI will be called {NUM_AI_CALLS} times, which will consume time and cost. "
+            "(Improvement 1: Async processing for faster speed)"
+        )
+        uploaded_file = st.file_uploader(
+            "Upload UN-DSA PDF file.", type="pdf"
+        )
 
-        # --- [Improvement 1] Async AI analysis execution logic ---
+        # --- Async AI analysis 실행 로직 ---
         if uploaded_file and st.button("Run AI Analysis", type="primary"):
             openai_api_key = os.getenv("OPENAI_API_KEY")
             if not openai_api_key:
                 st.error("Please set OPENAI_API_KEY in the .env file.")
             else:
                 st.session_state.latest_analysis_result = None
-                
-                # --- Define async execution function ---
+
                 async def run_analysis(progress_bar, openai_api_key):
+                    # 1) PDF → Text
                     progress_bar.progress(0, text="Extracting PDF text...")
                     full_text = parse_pdf_to_text(uploaded_file)
-                    
+
+                    # 2) Text → TSV (OpenAI)
                     CHUNK_SIZE = 15000
-                    text_chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
+                    text_chunks = [
+                        full_text[i : i + CHUNK_SIZE]
+                        for i in range(0, len(full_text), CHUNK_SIZE)
+                    ]
                     all_tsv_lines = []
                     analysis_failed = False
-                    
+
                     for i, chunk in enumerate(text_chunks):
-                        progress_bar.progress(i / (len(text_chunks) + 1), text=f"AI PDF->TSV converting... ({i+1}/{len(text_chunks)})")
-                        chunk_tsv = call_openai_for_tsv_conversion(chunk, openai_api_key)
+                        progress_bar.progress(
+                            i / (len(text_chunks) + 1),
+                            text=f"AI PDF->TSV converting... ({i+1}/{len(text_chunks)})",
+                        )
+                        chunk_tsv = call_openai_for_tsv_conversion(
+                            chunk, openai_api_key
+                        )
                         if chunk_tsv:
-                            lines = chunk_tsv.strip().split('\n')
+                            lines = chunk_tsv.strip().split("\n")
                             if not all_tsv_lines:
                                 all_tsv_lines.extend(lines)
                             else:
@@ -1909,19 +1963,21 @@ if admin_analysis_tab is not None:
                         else:
                             analysis_failed = True
                             break
-                    
+
                     if analysis_failed:
                         st.error("Failed to convert PDF->TSV.")
                         progress_bar.empty()
                         return
 
-                    processed_data = process_tsv_data("\n".join(all_tsv_lines))
+                    processed_data = process_tsv_data(
+                        "\n".join(all_tsv_lines)
+                    )
                     if not processed_data:
                         st.error("Failed to process TSV data.")
                         progress_bar.empty()
                         return
 
-                    # --- [신규] 리포트 안에 도시 좌표(lat/lon) 미리 생성해서 저장 ---
+                    # 3) 리포트 내 도시 좌표(lat/lon) 생성 후 저장 (지도용)
                     try:
                         geolocator = Nominatim(
                             user_agent=f"aicp_report_map_{random.randint(1000,9999)}"
@@ -1929,9 +1985,10 @@ if admin_analysis_tab is not None:
                     except Exception as e:
                         st.warning(f"지도 좌표용 geopy 초기화 실패: {e}")
                     else:
-                        with st.spinner("지도용 도시 좌표를 생성하는 중입니다..."):
+                        with st.spinner(
+                            "지도용 도시 좌표를 생성하는 중입니다..."
+                        ):
                             for city in processed_data.get("cities", []):
-                                # 이미 좌표가 있으면 건너뜀
                                 if city.get("lat") and city.get("lon"):
                                     continue
 
@@ -1942,133 +1999,209 @@ if admin_analysis_tab is not None:
 
                                 query = f"{city_name}, {country_name}"
                                 try:
-                                    location = geolocator.geocode(query, timeout=5)
+                                    location = geolocator.geocode(
+                                        query, timeout=5
+                                    )
                                     time.sleep(1)  # Nominatim rate limit
                                     if location:
-                                        city["lat"] = float(location.latitude)
-                                        city["lon"] = float(location.longitude)
+                                        city["lat"] = float(
+                                            location.latitude
+                                        )
+                                        city["lon"] = float(
+                                            location.longitude
+                                        )
                                 except Exception:
                                     # 좌표를 못 찾아도 전체 분석은 계속 진행
                                     continue
-                    # --- [신규 끝] ---
 
-                    # Create async OpenAI client
+                    # 4) Async OpenAI Client 생성
                     client = openai.AsyncOpenAI(api_key=openai_api_key)
-                    
-                    total_cities = len(processed_data["cities"])
-                    all_tasks = [] # List to hold all AI call tasks
 
-                    # 1. Pre-create all AI call tasks for all cities
+                    total_cities = len(processed_data["cities"])
+                    all_tasks = []  # [ [City1-10runs], [City2-10runs], ... ]
+
+                    # 5) 도시별 AI 호출 Task 준비
                     for city_data in processed_data["cities"]:
-                        city_name, country_name = city_data["city"], city_data["country_display"]
+                        city_name, country_name = (
+                            city_data["city"],
+                            city_data["country_display"],
+                        )
                         city_context = {
                             "neighborhood": city_data.get("neighborhood"),
                             "hotel_cluster": city_data.get("hotel_cluster"),
                         }
-                        season_context = city_data.get("season_context") or get_current_season_info(city_name, country_name)
-                        menu_samples = load_cached_menu_prices(city_name, country_name, city_context.get("neighborhood"))
-                        
+                        season_context = city_data.get(
+                            "season_context"
+                        ) or get_current_season_info(
+                            city_name, country_name
+                        )
+                        menu_samples = load_cached_menu_prices(
+                            city_name,
+                            country_name,
+                            city_context.get("neighborhood"),
+                        )
+
                         city_data["menu_samples"] = menu_samples
-                        city_data["reference_links"] = build_reference_link_lines(menu_samples, max_items=8)
-                        
+                        city_data["reference_links"] = (
+                            build_reference_link_lines(
+                                menu_samples, max_items=8
+                            )
+                        )
+
                         city_tasks = []
                         for j in range(1, NUM_AI_CALLS + 1):
                             task = get_market_data_from_ai_async(
-                                client, city_name, country_name, f"Run {j}",
-                                context=city_context, season_context=season_context, menu_samples=menu_samples
+                                client,
+                                city_name,
+                                country_name,
+                                f"Run {j}",
+                                context=city_context,
+                                season_context=season_context,
+                                menu_samples=menu_samples,
                             )
                             city_tasks.append(task)
-                        
-                        all_tasks.append(city_tasks) # [ [City1-10runs], [City2-10runs], ... ]
 
-                    # 2. Execute all tasks asynchronously and collect results
+                        all_tasks.append(city_tasks)
+
+                    # 6) 도시별로 10개 Task 동시 실행 및 결과 처리
                     city_index = 0
                     for city_tasks in all_tasks:
                         city_data = processed_data["cities"][city_index]
                         city_name = city_data["city"]
-                        progress_text = f"Calculating AI estimates... ({city_index+1}/{total_cities}) {city_name}"
-                        progress_bar.progress((city_index + 1) / max(total_cities, 1), text=progress_text)
-                        
-                        # Run 10 tasks for this city concurrently
-                        try:
-                            market_results = await asyncio.gather(*city_tasks)
-                        except Exception as e:
-                            st.error(f"Async error during {city_name} analysis: {e}")
-                            market_results = [] # Handle failure
+                        progress_text = (
+                            f"Calculating AI estimates... "
+                            f"({city_index+1}/{total_cities}) {city_name}"
+                        )
+                        progress_bar.progress(
+                            (city_index + 1) / max(total_cities, 1),
+                            text=progress_text,
+                        )
 
-                        # 3. Process results
+                        try:
+                            market_results = await asyncio.gather(
+                                *city_tasks
+                            )
+                        except Exception as e:
+                            st.error(
+                                f"Async error during {city_name} analysis: {e}"
+                            )
+                            market_results = []
+
                         ai_totals_source: List[int] = []
                         ai_meta_runs: List[Dict[str, Any]] = []
-                        
-                        # [New 2] Lists for detailed cost breakdown
+
                         ai_food: List[int] = []
                         ai_transport: List[int] = []
                         ai_misc: List[int] = []
 
-                        for j, market_result in enumerate(market_results, 1):
+                        for j, market_result in enumerate(
+                            market_results, 1
+                        ):
                             city_data[f"market_data_{j}"] = market_result
-                            if market_result.get("status") == 'ok' and market_result.get("total") is not None:
-                                ai_totals_source.append(market_result["total"])
-                                # [New 2] Add detailed costs
+                            if (
+                                market_result.get("status") == "ok"
+                                and market_result.get("total") is not None
+                            ):
+                                ai_totals_source.append(
+                                    market_result["total"]
+                                )
                                 ai_food.append(market_result.get("food", 0))
-                                ai_transport.append(market_result.get("transport", 0))
+                                ai_transport.append(
+                                    market_result.get("transport", 0)
+                                )
                                 ai_misc.append(market_result.get("misc", 0))
-                            
+
                             if "meta" in market_result:
                                 ai_meta_runs.append(market_result["meta"])
-                        
+
                         city_data["ai_provenance"] = ai_meta_runs
 
-                        # 4. Calculate final allowance
+                        # 최종 Per Diem 계산
                         final_allowance = None
-                        un_per_diem_raw = city_data.get("un", {}).get("per_diem_excl_lodging")
-                        un_per_diem = float(un_per_diem_raw) if isinstance(un_per_diem_raw, (int, float)) else None
+                        un_per_diem_raw = (
+                            city_data.get("un", {}).get(
+                                "per_diem_excl_lodging"
+                            )
+                        )
+                        un_per_diem = (
+                            float(un_per_diem_raw)
+                            if isinstance(un_per_diem_raw, (int, float))
+                            else None
+                        )
 
                         ai_stats = aggregate_ai_totals(ai_totals_source)
-                        season_factor = (season_context or {}).get("factor", 1.0)
+                        season_factor = (season_context or {}).get(
+                            "factor", 1.0
+                        )
                         ai_base_mean = ai_stats.get("mean_raw")
-                        ai_season_adjusted = ai_base_mean * season_factor if ai_base_mean is not None else None
-                        
-                        # [New 1] Calculate dynamic weights
-                        admin_weights = get_weight_config() # Load admin settings
+                        ai_season_adjusted = (
+                            ai_base_mean * season_factor
+                            if ai_base_mean is not None
+                            else None
+                        )
+
+                        admin_weights = get_weight_config()
                         ai_vc_score = ai_stats.get("variation_coeff")
-                        
+
                         if un_per_diem is not None:
-                            weights_cfg = get_dynamic_weights(ai_vc_score, admin_weights)
+                            weights_cfg = get_dynamic_weights(
+                                ai_vc_score, admin_weights
+                            )
                         else:
-                            # If no UN data, use AI 100%
-                            weights_cfg = {"un_weight": 0.0, "ai_weight": 1.0, "source": "AI Only (UN-DSA Missing)"}
-                        
+                            # UN 데이터 없으면 AI 100%
+                            weights_cfg = {
+                                "un_weight": 0.0,
+                                "ai_weight": 1.0,
+                                "source": "AI Only (UN-DSA Missing)",
+                            }
+
                         city_data["ai_summary"] = {
                             "raw_totals": ai_totals_source,
                             "used_totals": ai_stats.get("used_values", []),
-                            "removed_totals": ai_stats.get("removed_values", []),
+                            "removed_totals": ai_stats.get(
+                                "removed_values", []
+                            ),
                             "mean_base": ai_base_mean,
                             "mean_base_rounded": ai_stats.get("mean"),
-                            
-                            "ai_consistency_vc": ai_vc_score, # [New 1]
-                            
-                            "mean_food": mean(ai_food) if ai_food else 0, # [New 2]
-                            "mean_transport": mean(ai_transport) if ai_transport else 0, # [New 2]
-                            "mean_misc": mean(ai_misc) if ai_misc else 0, # [New 2]
-
+                            "ai_consistency_vc": ai_vc_score,
+                            "mean_food": mean(ai_food) if ai_food else 0,
+                            "mean_transport": mean(ai_transport)
+                            if ai_transport
+                            else 0,
+                            "mean_misc": mean(ai_misc) if ai_misc else 0,
                             "season_factor": season_factor,
-                            "season_label": (season_context or {}).get("label"),
+                            "season_label": (season_context or {}).get(
+                                "label"
+                            ),
                             "season_adjusted_mean_raw": ai_season_adjusted,
-                            "season_adjusted_mean_rounded": round(ai_season_adjusted) if ai_season_adjusted is not None else None,
-                            "successful_runs": len(ai_stats.get("used_values", [])),
+                            "season_adjusted_mean_rounded": round(
+                                ai_season_adjusted
+                            )
+                            if ai_season_adjusted is not None
+                            else None,
+                            "successful_runs": len(
+                                ai_stats.get("used_values", [])
+                            ),
                             "attempted_runs": NUM_AI_CALLS,
-                            "reference_links": city_data.get("reference_links", []),
+                            "reference_links": city_data.get(
+                                "reference_links", []
+                            ),
                             "weighted_average_components": {
                                 "un_per_diem": un_per_diem,
                                 "ai_season_adjusted": ai_season_adjusted,
-                                "weights": weights_cfg, # [New 1] Save dynamic weights
+                                "weights": weights_cfg,
                             },
                         }
 
-                        # [New 1] Calculate final value with dynamic weights
-                        if un_per_diem is not None and ai_season_adjusted is not None:
-                            weighted_average = (un_per_diem * weights_cfg["un_weight"]) + (ai_season_adjusted * weights_cfg["ai_weight"])
+                        # 동적 가중치 적용
+                        if (
+                            un_per_diem is not None
+                            and ai_season_adjusted is not None
+                        ):
+                            weighted_average = (
+                                un_per_diem * weights_cfg["un_weight"]
+                                + ai_season_adjusted * weights_cfg["ai_weight"]
+                            )
                             final_allowance = round(weighted_average)
                         elif un_per_diem is not None:
                             final_allowance = round(un_per_diem)
@@ -2077,57 +2210,82 @@ if admin_analysis_tab is not None:
 
                         city_data["final_allowance"] = final_allowance
 
-                        if final_allowance and un_per_diem and un_per_diem > 0:
-                            city_data["delta_vs_un_pct"] = round(((final_allowance - un_per_diem) / un_per_diem) * 100)
+                        if (
+                            final_allowance
+                            and un_per_diem
+                            and un_per_diem > 0
+                        ):
+                            city_data["delta_vs_un_pct"] = round(
+                                (
+                                    (final_allowance - un_per_diem)
+                                    / un_per_diem
+                                )
+                                * 100
+                            )
                         else:
                             city_data["delta_vs_un_pct"] = "N/A"
-                        
-                        city_index += 1 # Next city
+
+                        city_index += 1
 
                     save_report_data(processed_data)
                     st.session_state.latest_analysis_result = processed_data
                     st.success("AI analysis completed.")
                     progress_bar.empty()
                     st.rerun()
-                
-                # --- Async execution ---
-                with st.spinner("Processing PDF and running AI analysis... (Takes approx. 10-30 seconds)"):
-                    progress_bar = st.progress(0, text="Starting analysis...")
+
+                # 실제 실행
+                with st.spinner(
+                    "Processing PDF and running AI analysis... (Takes approx. 10-30 seconds)"
+                ):
+                    progress_bar = st.progress(
+                        0, text="Starting analysis..."
+                    )
                     asyncio.run(run_analysis(progress_bar, openai_api_key))
 
-        # --- [Improvement 3] "Latest Analysis Summary" feature (analysis_sub_tab) ---
+        # --- [섹션 4] Latest Analysis Summary 테이블 ---
         if st.session_state.latest_analysis_result:
             st.markdown("---")
             st.subheader("Latest Analysis Summary")
             df_data = []
-            for city in st.session_state.latest_analysis_result['cities']:
+            for city in st.session_state.latest_analysis_result["cities"]:
                 row = {
-                    'City': city.get('city', 'N/A'),
-                    'Country': city.get('country_display', 'N/A'),
-                    'UN-DSA': city.get('un', {}).get('per_diem_excl_lodging'),
+                    "City": city.get("city", "N/A"),
+                    "Country": city.get("country_display", "N/A"),
+                    "UN-DSA": city.get("un", {}).get(
+                        "per_diem_excl_lodging"
+                    ),
                 }
                 for j in range(1, NUM_AI_CALLS + 1):
-                    row[f"AI {j}"] = city.get(f'market_data_{j}', {}).get('total')
+                    row[f"AI {j}"] = city.get(
+                        f"market_data_{j}", {}
+                    ).get("total")
 
-                # --- [HOTFIX] Prevent ArrowInvalid Error ---
-                delta_val = city.get('delta_vs_un_pct')
+                delta_val = city.get("delta_vs_un_pct")
                 if isinstance(delta_val, (int, float)):
-                    delta_display = f"{delta_val:.0f}%" # Change number to string format like "12%"
+                    delta_display = f"{delta_val:.0f}%"
                 else:
-                    delta_display = "N/A" # Already "N/A" string
-                # --- [HOTFIX] End ---
-                    
-                row.update({
-                    'Final Allowance': city.get('final_allowance'),
-                    'Delta (%)': delta_display, # <-- Use modified string value
-                    'Trip Lengths': DEFAULT_TRIP_LENGTH[0],
-                    'Notes': city.get('notes', ''),
-                })
+                    delta_display = "N/A"
+
+                row.update(
+                    {
+                        "Final Allowance": city.get("final_allowance"),
+                        "Delta (%)": delta_display,
+                        "Trip Lengths": DEFAULT_TRIP_LENGTH[0],
+                        "Notes": city.get("notes", ""),
+                    }
+                )
                 df_data.append(row)
 
-            st.dataframe(pd.DataFrame(df_data), use_container_width=True) # <-- Added use_container_width (change to width='stretch' if needed)
+            st.dataframe(
+                pd.DataFrame(df_data), use_container_width=True
+            )
             with st.expander("View generated markdown report"):
-                st.markdown(generate_markdown_report(st.session_state.latest_analysis_result))
+                st.markdown(
+                    generate_markdown_report(
+                        st.session_state.latest_analysis_result
+                    )
+                )
+
 
 
 def auto_fill_all_city_coordinates() -> tuple[int, int]:
