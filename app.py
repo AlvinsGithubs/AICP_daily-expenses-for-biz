@@ -83,13 +83,14 @@ def add_menu_cache_entry(new_entry: Dict[str, Any]) -> bool:
     """새로운 캐시 항목 1개를 DB에 추가합니다."""
     try:
         new_entry["last_updated"] = datetime.now().date()
-        # DataFrame으로 변환하여 insert (to_dict('records')와 형식을 맞춤)
-        df_new = pd.DataFrame([new_entry]) 
-        conn.insert("menu_cache", df_new)
+        df_new = pd.DataFrame([new_entry])
+        # conn.insert(...) 대신 직접 INSERT
+        _bulk_insert_dataframe("menu_cache", df_new)
         return True
     except Exception as e:
         st.error(f"DB 저장 실패: {e}")
         return False
+
 
 def save_cached_menu_prices(all_samples: List[Dict[str, Any]]) -> bool:
     """(삭제 시 사용) *전체* 메뉴 캐시 목록을 DB에 덮어씁니다."""
@@ -102,13 +103,14 @@ def save_cached_menu_prices(all_samples: List[Dict[str, Any]]) -> bool:
         # 2. 새 목록으로 삽입 (비어있지 않다면)
         if all_samples:
             df_new = pd.DataFrame(all_samples)
-            # id, created_at 등 자동 생성 컬럼은 DataFrame에 없을 수 있으므로 제외
-            df_new = df_new.drop(columns=["id", "created_at"], errors='ignore') 
-            conn.insert("menu_cache", df_new)
+            df_new = df_new.drop(columns=["id", "created_at"], errors='ignore')
+            _bulk_insert_dataframe("menu_cache", df_new)
+
         return True
     except Exception as e:
         st.error(f"DB 업데이트 실패: {e}")
         return False
+
 
 MENU_CACHE_ENABLED = True # DB를 사용하므로 항상 활성화
 # --- [v20.0 DB연동] 끝 ---
@@ -480,11 +482,30 @@ def save_target_city_entries(entries: List[Dict[str, Any]]) -> None:
         # 2. 새 목록으로 삽입 (비어있지 않다면)
         if entries:
             df_new = pd.DataFrame(entries)
-            # DB가 자동 생성하는 'id', 'created_at'은 삽입 시 제외
-            df_new = df_new.drop(columns=["id", "created_at"], errors='ignore') 
-            conn.insert("target_cities", df_new)
+            df_new = df_new.drop(columns=["id", "created_at"], errors='ignore')
+            _bulk_insert_dataframe("target_cities", df_new)
     except Exception as e:
         st.error(f"DB 도시 목록 저장 실패: {e}")
+
+def _bulk_insert_dataframe(table_name: str, df: pd.DataFrame) -> None:
+    """
+    Streamlit SQLConnection 에는 insert() 메서드가 없으므로,
+    session + raw SQL 로 DataFrame 을 일괄 insert 한다.
+    """
+    if df.empty:
+        return
+
+    cols = list(df.columns)
+    col_list = ", ".join(cols)
+    placeholders = ", ".join([f":{c}" for c in cols])
+    insert_sql = text(f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})")
+
+    with conn.session as s:
+        for _, row in df.iterrows():
+            s.execute(insert_sql, params=row.to_dict())
+        s.commit()
+
+
 
 TARGET_CITIES_ENTRIES = load_target_city_entries() # 앱 시작 시 DB에서 로드
 
@@ -1290,7 +1311,6 @@ if is_admin:
 # --- [End of modification] ---
 if dashboard_tab is not None:
     with dashboard_tab:
-        # 여기서는 바로 대시보드 UI만 그리면 됨
         st.header("Global Cost Dashboard")
         st.info("Visualizes the global business trip cost status based on the latest report data.")
 
@@ -1307,223 +1327,205 @@ if dashboard_tab is not None:
             st.subheader(f"Reference Report: `{latest_report_file}`")
           
             report_data = load_report_data(latest_report_file)
-            config_entries = get_target_city_entries()
-            
-            if not report_data or 'cities' not in report_data or not config_entries:
+            if not report_data or 'cities' not in report_data:
                 st.error("Failed to load data.")
             else:
-                # 1. Prepare DataFrame (Report + Coordinates)
-                df_report = pd.DataFrame(report_data['cities'])
-                df_config = pd.DataFrame(config_entries)
-
-                df_merged = pd.merge(
-                    df_report,
-                    df_config,
-                    left_on=["city", "country_display"],
-                    right_on=["city", "country"],
-                    suffixes=("_report", "_config")
-                )
-                
-                # --- [신규] 지도용 데이터는 리포트 JSON(lat/lon)을 직접 사용 ---
-            required_map_cols = ['city', 'country', 'lat', 'lon', 'final_allowance']
-
-            # 리포트에는 country_display 라고 되어 있으니 country로 이름만 바꿔줌
-            df_report_map = df_report.copy()
-            df_report_map.rename(columns={"country_display": "country"}, inplace=True)
-
-            # lat/lon + final_allowance 컬럼이 있는지 체크
-            if not {'lat', 'lon', 'final_allowance'}.issubset(df_report_map.columns):
-                st.warning(
-                    "이 리포트에는 지도에 사용할 좌표(lat/lon) 정보가 저장되어 있지 않습니다. 🗺️\n\n"
-                    "📌 'Report Analysis (Admin)' 탭에서 AI 분석을 **최신 버전 코드로 다시 실행**하면, "
-                    "좌표가 리포트에 함께 저장되고 이후부터는 지도가 자동으로 표시됩니다."
-                )
-
-                # 👉 System Settings 의 '모든 도시 좌표 자동 완성' 과 **동일한 기능**
+                # --- 좌표 다시 불러오기 버튼 (System Settings 와 동일 기능) ---
                 if st.button("좌표 다시 불러오기", key="reload_coords_from_dashboard"):
                     success_count, fail_count = auto_fill_all_city_coordinates()
-
                     if success_count == 0 and fail_count == 0:
                         st.success("모든 도시에 이미 좌표가 설정되어 있습니다. (업데이트 불필요)")
                     else:
                         st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
 
-                    st.info(
-                        "좌표를 업데이트한 후, 'Report Analysis (Admin)' 탭에서 AI 분석을 "
-                        "최신 버전으로 다시 실행하면 새 리포트에 좌표가 포함되고, 지도에 반영됩니다."
-                    )
-
-                map_data = pd.DataFrame(columns=required_map_cols)
-            else:
-                map_data = df_report_map[["city", "country", "lat", "lon", "final_allowance"]].copy()
-                map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
-                map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
-                map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
-
-
-                # 이후 로직은 그대로 유지
-                if map_data.empty:
-                    st.caption("No data to display on the map. (Check if coordinates were generated.)")
+                # 항상 최신 target_cities 를 다시 로드
+                config_entries = get_target_city_entries()
+                if not config_entries:
+                    st.error("Failed to load target cities.")
                 else:
-                    # 2. Calculate color (R,G,B) and size based on cost
-                    min_cost = map_data['final_allowance'].min()
-                    max_cost = map_data['final_allowance'].max()
-                    range_cost = max_cost - min_cost if max_cost > min_cost else 1.0
+                    # 1. Report + Target Cities 머지
+                    df_report = pd.DataFrame(report_data['cities'])
+                    df_config = pd.DataFrame(config_entries)
 
-                    def get_color_and_size(cost):
-                        norm_cost = (cost - min_cost) / range_cost
-                        r = int(255 * norm_cost)
-                        g = int(255 * (1 - norm_cost))
-                        b = 0
-                        size = 50000 + (norm_cost * 450000)
-                        return [r, g, b, 160], size
-
-                    color_size = map_data['final_allowance'].apply(get_color_and_size)
-                    map_data['color'] = [item[0] for item in color_size]
-                    map_data['size'] = [item[1] for item in color_size]
-
-                    # 3. Create Pydeck chart
-                    view_state = pdk.ViewState(
-                        latitude=map_data['lat'].mean(),
-                        longitude=map_data['lon'].mean(),
-                        zoom=0.5,
-                        pitch=0,
-                        bearing=0
+                    df_merged = pd.merge(
+                        df_report,
+                        df_config,
+                        left_on=["city", "country_display"],
+                        right_on=["city", "country"],
+                        suffixes=("_report", "_config")
                     )
 
-                    layer = pdk.Layer(
-                        'ScatterplotLayer',
-                        data=map_data,
-                        get_position='[lon, lat]',
-                        get_color='color',
-                        get_radius='size',
-                        pickable=True,
-                        opacity=0.8,
-                        stroked=True,
-                        filled=True,
-                        radius_scale=0.5,
-                        get_line_color=[255, 255, 255, 100],
-                        get_line_width=10000,
-                    )
+                    # 2. 지도용 데이터: target_cities 의 lat/lon 사용
+                    if not {'lat', 'lon', 'final_allowance'}.issubset(df_merged.columns):
+                        map_data = pd.DataFrame(columns=["city", "country", "lat", "lon", "final_allowance"])
+                    else:
+                        map_data = df_merged[["city", "country", "lat", "lon", "final_allowance"]].copy()
+                        map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
+                        map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
+                        map_data['final_allowance'] = pd.to_numeric(map_data['final_allowance'], errors='coerce')
+                        map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
 
-                    tooltip = {
-                        "html": "<b>{city}, {country}</b><br/>"
-                                "Final Allowance: <b>${final_allowance}</b>",
-                        "style": { "color": "white", "backgroundColor": "#1e3c72" }
-                    }
-                    
-                    r = pdk.Deck(
-                        layers=[layer],
-                        initial_view_state=view_state,
-                        tooltip=tooltip
-                    )
-
-                    map_col, legend_col = st.columns([4, 1])
-
-                    with map_col:
-                        st.pydeck_chart(r, use_container_width=True)
-
-                    with legend_col:
-                        st.write("##### Legend (Cost)")
-                        st.markdown(f"""
-                        <div style="display: flex; align-items: center; margin-bottom: 5px;">
-                            <div style="width: 20px; height: 20px; background-color: rgb(255, 0, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
-                            <span style="margin-left: 10px;">High Cost (~${max_cost:,.0f})</span>
-                        </div>
-                        <div style="display: flex; align-items: center; margin-bottom: 5px;">
-                            <div style="width: 20px; height: 20px; background-color: rgb(127, 127, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
-                            <span style="margin-left: 10px;">Medium Cost</span>
-                        </div>
-                        <div style="display: flex; align-items: center;">
-                            <div style="width: 20px; height: 20px; background-color: rgb(0, 255, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
-                            <span style="margin-left: 10px;">Low Cost (~${min_cost:,.0f})</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.caption("The larger the circle and the redder the color, the higher the cost of the city.")
-
-
-                # 4. (Apply Idea 1) Top 10 Charts
-                st.divider()
-                col1, col2 = st.columns(2)
-                
-                if 'final_allowance' in df_merged.columns:
-                    with col1:
-                        st.write("##### 💰 Top 10 High Cost Cities (AI Final)")
-                        top_10_cost_df = df_merged.nlargest(10, 'final_allowance')[['city', 'final_allowance']].reset_index(drop=True)
-                        
-                        average_cost = df_merged['final_allowance'].mean()
-                        
-                        # --- [v19.1 Hotfix] Add 'average' column for tooltip ---
-                        top_10_cost_df['average'] = average_cost
-                        
-                        base_cost = alt.Chart(top_10_cost_df).encode(
-                            x=alt.X('city', sort=None, title="City", axis=alt.Axis(labelAngle=-45)), 
-                            y=alt.Y('final_allowance', title="Final Allowance ($)", axis=alt.Axis(format='$,.0f')),
-                            tooltip=[
-                                alt.Tooltip('city', title="City"),
-                                alt.Tooltip('final_allowance', title="Final Allowance ($)", format='$,.0f'),
-                                alt.Tooltip('average', title="Overall Average", format='$,.0f') # <-- Modified
-                            ]
+                    if map_data.empty:
+                        st.warning(
+                            "이 리포트에 매칭되는 도시 좌표(lat/lon)가 없습니다. "
+                            "위의 '좌표 다시 불러오기' 버튼을 눌러 target_cities 좌표를 자동 완성한 뒤, "
+                            "다시 한 번 확인해주세요."
                         )
-                        
-                        bars_cost = base_cost.mark_bar(color="#0D6EFD").encode()
-                        
-                        rule_cost = alt.Chart(pd.DataFrame({'average_cost': [average_cost]})).mark_rule(
-                            color='gray', strokeDash=[3, 3] # [v19.1] Change line color
-                        ).encode(
-                            y=alt.Y('average_cost', title=''),
-                            tooltip=[alt.Tooltip('average_cost', title="Overall Average", format='$,.0f')] 
-                        )
-                        
-                        chart_cost = (bars_cost + rule_cost).properties(
-                            background='transparent',
-                            title=f"Overall Average: ${average_cost:,.0f}" 
-                        ).interactive()
-                        st.altair_chart(chart_cost, use_container_width=True)
-                    
-                    with col2:
-                        st.write("##### ⚠️ Top 10 High Volatility Cities (AI Confidence)")
-                        df_report_vc = pd.DataFrame(report_data['cities'])
-                        df_report_vc['vc'] = df_report_vc['ai_summary'].apply(lambda x: x.get('ai_consistency_vc') if isinstance(x, dict) else None)
-                        df_report_vc.dropna(subset=['vc'], inplace=True)
-                        
-                        if df_report_vc.empty:
-                            st.info("Volatility (VC) data is missing. (AI analysis with the latest version is required)")
-                        else:
-                            top_10_vc_df = df_report_vc.nlargest(10, 'vc')[['city', 'vc']].reset_index(drop=True)
-                            
-                            average_vc = df_report_vc['vc'].mean()
+                        st.caption("No data to display on the map. (Check if coordinates were generated.)")
+                    else:
+                        # 3. Pydeck 지도 렌더링
+                        min_cost = map_data['final_allowance'].min()
+                        max_cost = map_data['final_allowance'].max()
+                        range_cost = max_cost - min_cost if max_cost > min_cost else 1.0
 
-                            # --- [v19.1 Hotfix] Add 'average' column for tooltip ---
-                            top_10_vc_df['average'] = average_vc
+                        def get_color_and_size(cost):
+                            norm_cost = (cost - min_cost) / range_cost
+                            r = int(255 * norm_cost)
+                            g = int(255 * (1 - norm_cost))
+                            b = 0
+                            size = 50000 + (norm_cost * 450000)
+                            return [r, g, b, 160], size
+
+                        color_size = map_data['final_allowance'].apply(get_color_and_size)
+                        map_data['color'] = [item[0] for item in color_size]
+                        map_data['size'] = [item[1] for item in color_size]
+
+                        view_state = pdk.ViewState(
+                            latitude=map_data['lat'].mean(),
+                            longitude=map_data['lon'].mean(),
+                            zoom=0.5,
+                            pitch=0,
+                            bearing=0
+                        )
+
+                        layer = pdk.Layer(
+                            'ScatterplotLayer',
+                            data=map_data,
+                            get_position='[lon, lat]',
+                            get_color='color',
+                            get_radius='size',
+                            pickable=True,
+                            opacity=0.8,
+                            stroked=True,
+                            filled=True,
+                            radius_scale=0.5,
+                            get_line_color=[255, 255, 255, 100],
+                            get_line_width=10000,
+                        )
+
+                        tooltip = {
+                            "html": "<b>{city}, {country}</b><br/>"
+                                    "Final Allowance: <b>${final_allowance}</b>",
+                            "style": { "color": "white", "backgroundColor": "#1e3c72" }
+                        }
+                        
+                        map_col, legend_col = st.columns([4, 1])
+
+                        with map_col:
+                            st.pydeck_chart(
+                                pdk.Deck(
+                                    layers=[layer],
+                                    initial_view_state=view_state,
+                                    tooltip=tooltip
+                                ),
+                                use_container_width=True
+                            )
+
+                        with legend_col:
+                            st.write("##### Legend (Cost)")
+                            st.markdown(f"""
+                            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                                <div style="width: 20px; height: 20px; background-color: rgb(255, 0, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
+                                <span style="margin-left: 10px;">High Cost (~${max_cost:,.0f})</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                                <div style="width: 20px; height: 20px; background-color: rgb(127, 127, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
+                                <span style="margin-left: 10px;">Medium Cost</span>
+                            </div>
+                            <div style="display: flex; align-items: center;">
+                                <div style="width: 20px; height: 20px; background-color: rgb(0, 255, 0, 0.8); border-radius: 50%; border: 1px solid #FFF;"></div>
+                                <span style="margin-left: 10px;">Low Cost (~${min_cost:,.0f})</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            st.caption("The larger the circle and the redder the color, the higher the cost of the city.")
+
+                    # --- 이하 기존 Top 10 차트 로직은 그대로 유지 ---
+                    st.divider()
+                    col1, col2 = st.columns(2)
+                    
+                    if 'final_allowance' in df_merged.columns:
+                        with col1:
+                            st.write("##### 💰 Top 10 High Cost Cities (AI Final)")
+                            top_10_cost_df = df_merged.nlargest(10, 'final_allowance')[['city', 'final_allowance']].reset_index(drop=True)
                             
-                            base_vc = alt.Chart(top_10_vc_df).encode(
+                            average_cost = df_merged['final_allowance'].mean()
+                            top_10_cost_df['average'] = average_cost
+                            
+                            base_cost = alt.Chart(top_10_cost_df).encode(
                                 x=alt.X('city', sort=None, title="City", axis=alt.Axis(labelAngle=-45)), 
-                                y=alt.Y('vc', title="Variation Coefficient (VC)", axis=alt.Axis(format='%')),
+                                y=alt.Y('final_allowance', title="Final Allowance ($)", axis=alt.Axis(format='$,.0f')),
                                 tooltip=[
                                     alt.Tooltip('city', title="City"),
-                                    alt.Tooltip('vc', title="Variation Coefficient (VC)", format='.2%'),
-                                    alt.Tooltip('average', title="Overall Average", format='.2%') # <-- Modified
+                                    alt.Tooltip('final_allowance', title="Final Allowance ($)", format='$,.0f'),
+                                    alt.Tooltip('average', title="Overall Average", format='$,.0f')
                                 ]
                             )
                             
-                            bars_vc = base_vc.mark_bar(color="#DC3545").encode()
+                            bars_cost = base_cost.mark_bar().encode()
                             
-                            rule_vc = alt.Chart(pd.DataFrame({'average_vc': [average_vc]})).mark_rule(
-                                color='gray', strokeDash=[3, 3] # [v19.1] Change line color
+                            rule_cost = alt.Chart(pd.DataFrame({'average_cost': [average_cost]})).mark_rule(
+                                strokeDash=[3, 3]
                             ).encode(
-                                y=alt.Y('average_vc', title=''),
-                                tooltip=[alt.Tooltip('average_vc', title="Overall Average", format='.2%')]
+                                y=alt.Y('average_cost', title=''),
+                                tooltip=[alt.Tooltip('average_cost', title="Overall Average", format='$,.0f')] 
                             )
                             
-                            chart_vc = (bars_vc + rule_vc).properties(
+                            chart_cost = (bars_cost + rule_cost).properties(
                                 background='transparent',
-                                title=f"Overall Average: {average_vc:.2%}"
+                                title=f"Overall Average: ${average_cost:,.0f}" 
                             ).interactive()
-                            st.altair_chart(chart_vc, use_container_width=True)
-                            st.caption("The higher the volatility (VC), the less confident the AI is in its price estimation for the city.")
-                else:
-                    st.warning("No 'final_allowance' data to display the chart.")
+                            st.altair_chart(chart_cost, use_container_width=True)
+                        
+                        with col2:
+                            st.write("##### ⚠️ Top 10 High Volatility Cities (AI Confidence)")
+                            df_report_vc = pd.DataFrame(report_data['cities'])
+                            df_report_vc['vc'] = df_report_vc['ai_summary'].apply(lambda x: x.get('ai_consistency_vc') if isinstance(x, dict) else None)
+                            df_report_vc.dropna(subset=['vc'], inplace=True)
+                            
+                            if df_report_vc.empty:
+                                st.info("Volatility (VC) data is missing. (AI analysis with the latest version is required)")
+                            else:
+                                top_10_vc_df = df_report_vc.nlargest(10, 'vc')[['city', 'vc']].reset_index(drop=True)
+                                average_vc = df_report_vc['vc'].mean()
+                                top_10_vc_df['average'] = average_vc
+                                
+                                base_vc = alt.Chart(top_10_vc_df).encode(
+                                    x=alt.X('city', sort=None, title="City", axis=alt.Axis(labelAngle=-45)), 
+                                    y=alt.Y('vc', title="Variation Coefficient (VC)", axis=alt.Axis(format='%')),
+                                    tooltip=[
+                                        alt.Tooltip('city', title="City"),
+                                        alt.Tooltip('vc', title="Variation Coefficient (VC)", format='.2%'),
+                                        alt.Tooltip('average', title="Overall Average", format='.2%')
+                                    ]
+                                )
+                                
+                                bars_vc = base_vc.mark_bar().encode()
+                                
+                                rule_vc = alt.Chart(pd.DataFrame({'average_vc': [average_vc]})).mark_rule(
+                                    strokeDash=[3, 3]
+                                ).encode(
+                                    y=alt.Y('average_vc', title=''),
+                                    tooltip=[alt.Tooltip('average_vc', title="Overall Average", format='.2%')]
+                                )
+                                
+                                chart_vc = (bars_vc + rule_vc).properties(
+                                    background='transparent',
+                                    title=f"Overall Average: {average_vc:.2%}"
+                                ).interactive()
+                                st.altair_chart(chart_vc, use_container_width=True)
+                                st.caption("The higher the volatility (VC), the less confident the AI is in its price estimation for the city.")
+                    else:
+                        st.warning("No 'final_allowance' data to display the chart.")
 
 
 if employee_tab is not None:
