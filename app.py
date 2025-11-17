@@ -15,14 +15,6 @@ import openai
 from dotenv import load_dotenv
 
 
-# --- [공통] Admin Access Code 설정 (전역) ---
-ACCESS_CODE_KEY = "admin_access_code_valid"
-ACCESS_CODE_VALUE = os.getenv("ADMIN_ACCESS_CODE")  # .env에서 로드
-# ------------------------------------------------
-
-# Maximum number of AI calls per analysis
-NUM_AI_CALLS = 10
-
 import io
 from datetime import datetime, timedelta
 import time
@@ -126,6 +118,10 @@ MENU_CACHE_ENABLED = True # DB를 사용하므로 항상 활성화
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
+
+# --- [공통] Admin Access Code 설정 (전역) ---
+ACCESS_CODE_KEY = "admin_access_code_valid"
+ACCESS_CODE_VALUE = os.getenv("ADMIN_ACCESS_CODE")  # .env에서 로드
 
 # Maximum number of AI calls per analysis
 NUM_AI_CALLS = 10
