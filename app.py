@@ -5,6 +5,7 @@
 #
 # 2. .env 파일에 OPENAI_API_KEY 값을 설정하세요.
 # 3. .env 파일에 ADMIN_ACCESS_CODE="<비밀번호>"를 설정하세요.
+import math  # NaN 체크용
 import streamlit as st
 import pandas as pd
 import json
@@ -483,6 +484,13 @@ def save_target_city_entries(entries: List[Dict[str, Any]]) -> None:
         if entries:
             df_new = pd.DataFrame(entries)
             df_new = df_new.drop(columns=["id", "created_at"], errors='ignore')
+
+            # un_dsa_substitute 컬럼이 있다면, dict 가 아닌 값은 모두 None 처리
+            if "un_dsa_substitute" in df_new.columns:
+                df_new["un_dsa_substitute"] = df_new["un_dsa_substitute"].apply(
+                    lambda v: v if isinstance(v, dict) else None
+                )
+
             _bulk_insert_dataframe("target_cities", df_new)
     except Exception as e:
         st.error(f"DB 도시 목록 저장 실패: {e}")
@@ -491,6 +499,7 @@ def _bulk_insert_dataframe(table_name: str, df: pd.DataFrame) -> None:
     """
     Streamlit SQLConnection 에는 insert() 메서드가 없으므로,
     session + raw SQL 로 DataFrame 을 일괄 insert 한다.
+    NaN 값은 모두 None(NULL)으로 변환해서 타입 오류를 방지한다.
     """
     if df.empty:
         return
@@ -498,12 +507,25 @@ def _bulk_insert_dataframe(table_name: str, df: pd.DataFrame) -> None:
     cols = list(df.columns)
     col_list = ", ".join(cols)
     placeholders = ", ".join([f":{c}" for c in cols])
-    insert_sql = text(f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})")
+    insert_sql = text(
+        f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})"
+    )
 
     with conn.session as s:
         for _, row in df.iterrows():
-            s.execute(insert_sql, params=row.to_dict())
+            raw_dict = row.to_dict()
+            clean_dict = {}
+
+            for k, v in raw_dict.items():
+                # pandas 가 넣어준 NaN(float) → None 으로 변환
+                if isinstance(v, float) and math.isnan(v):
+                    clean_dict[k] = None
+                else:
+                    clean_dict[k] = v
+
+            s.execute(insert_sql, params=clean_dict)
         s.commit()
+
 
 
 
