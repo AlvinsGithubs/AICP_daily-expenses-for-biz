@@ -1248,50 +1248,15 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
 # 1) 상단 탭 레이아웃
 top_left, _ = st.columns([6, 2])
 
-with top_left:
-    tab_definitions = []
-
-    # (1) 직원용 탭 – 기본 첫 탭
-    employee_tab_visible = bool(
-        st.session_state.get("employee_tab_visibility", stored_employee_tab_visible)
-    )
-    if employee_tab_visible:
-        tab_definitions.append("💵 Per Diem Inquiry (Employee)")
-
-    # (2) Admin 탭 – 로그인 상태에서만 표시
-    if is_admin:
-        tab_definitions.append("📈 Report Analysis (Admin)")
-        tab_definitions.append("🛠️ System Settings (Admin)")
-        tab_definitions.append("📊 Executive Dashboard (Admin)")
-
-    # 탭이 하나도 없을 경우를 대비한 fallback
-    if not tab_definitions:
-        tab_definitions.append("🔒 Admin Login")
-
-    tabs = st.tabs(tab_definitions)
-
-    # 탭 인덱스 매핑
-    employee_tab = admin_analysis_tab = admin_config_tab = dashboard_tab = None
-    idx = 0
-
-    if employee_tab_visible:
-        employee_tab = tabs[idx]
-        idx += 1
-
-    if is_admin:
-        admin_analysis_tab = tabs[idx]; idx += 1
-        admin_config_tab   = tabs[idx]; idx += 1
-        dashboard_tab      = tabs[idx]; idx += 1
-
-
 # 2) 메인 영역: 탭 레이아웃
+#   - employee_tab_visible, is_admin 은 이미 위에서 계산된 값 사용
 tab_definitions = []
 
 # (1) 직원용 탭 – 기본 첫 탭
 if employee_tab_visible:
     tab_definitions.append("💵 Per Diem Inquiry (Employee)")
 
-# (2) Admin 탭 – Access Code 통과 후에만 표시
+# (2) Admin 탭 – 로그인 상태에서만 표시
 if is_admin:
     tab_definitions.append("📈 Report Analysis (Admin)")
     tab_definitions.append("🛠️ System Settings (Admin)")
@@ -1315,6 +1280,9 @@ if is_admin:
     admin_analysis_tab = tabs[idx]; idx += 1
     admin_config_tab   = tabs[idx]; idx += 1
     dashboard_tab      = tabs[idx]; idx += 1
+
+# 이 아래부터는 employee_tab / admin_analysis_tab / admin_config_tab / dashboard_tab 를 그대로 사용
+
 
 # 이 아래부터는 employee_tab / admin_analysis_tab / admin_config_tab / dashboard_tab 를 그대로 사용
 
