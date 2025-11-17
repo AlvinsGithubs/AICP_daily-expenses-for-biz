@@ -1256,7 +1256,7 @@ with dashboard_tab:
             # 1. Prepare DataFrame (Report + Coordinates)
             df_report = pd.DataFrame(report_data['cities'])
             df_config = pd.DataFrame(config_entries)
-            
+
             df_merged = pd.merge(
                 df_report,
                 df_config,
@@ -1265,51 +1265,27 @@ with dashboard_tab:
                 suffixes=("_report", "_config")
             )
             
-                        # --- 지도용 데이터 준비 ---
+            # --- [신규] 지도용 데이터는 리포트 JSON(lat/lon)을 직접 사용 ---
             required_map_cols = ['city', 'country', 'lat', 'lon', 'final_allowance']
 
-            has_latlon_cols = ('lat' in df_merged.columns) and ('lon' in df_merged.columns)
-            needs_autofill = False
-            map_data = pd.DataFrame(columns=required_map_cols)
+            # 리포트에는 country_display 라고 되어 있으니 country로 이름만 바꿔줌
+            df_report_map = df_report.copy()
+            df_report_map.rename(columns={"country_display": "country"}, inplace=True)
 
-            if not has_latlon_cols:
-                # 스키마에 lat/lon 컬럼이 아예 없을 때 (초기 설치 직후 등)
-                needs_autofill = True
-            else:
-                tmp = df_merged.copy()
-
-                # 숫자형으로 변환
-                tmp['lat'] = pd.to_numeric(tmp['lat'], errors='coerce')
-                tmp['lon'] = pd.to_numeric(tmp['lon'], errors='coerce')
-
-                # 지도에 쓸 필드만 남기기
-                # (lat/lon 컬럼은 target_cities 쪽에서 가져오기 때문에 여기서 에러 나면 바로 잡히도록 함)
-                try:
-                    tmp = tmp[required_map_cols]
-                except KeyError:
-                    needs_autofill = True
-                else:
-                    # lat/lon 이 전부 NaN 이면 "아직 한 도시도 좌표가 없음" → 자동 생성 필요
-                    if tmp[['lat', 'lon']].isna().all().all():
-                        needs_autofill = True
-                    else:
-                        # 좌표랑 final_allowance 있는 도시만 지도에 표시
-                        map_data = tmp.dropna(subset=['lat', 'lon', 'final_allowance'])
-
-            if needs_autofill:
+            # lat/lon + final_allowance 컬럼이 있는지 체크
+            if not {'lat', 'lon', 'final_allowance'}.issubset(df_report_map.columns):
                 st.warning(
-                    "Coordinate (lat/lon) data for the map is missing. 🗺️\n\n"
-                    "아래 버튼을 눌러 모든 도시 좌표를 자동으로 생성한 뒤 지도를 다시 그립니다."
+                    "이 리포트에는 지도에 사용할 좌표(lat/lon) 정보가 저장되어 있지 않습니다. 🗺️\n\n"
+                    "📌 'Report Analysis (Admin)' 탭에서 AI 분석을 **최신 버전 코드로 다시 실행**하면, "
+                    "좌표가 리포트에 함께 저장되고 이후부터는 지도가 자동으로 표시됩니다."
                 )
-
-                if st.button("모든 도시 좌표 자동 생성 (Admin)", key="auto_fill_coords_from_dashboard"):
-                    success_count, fail_count = auto_fill_all_city_coordinates()
-                    if success_count == 0 and fail_count == 0:
-                        st.success("모든 도시에 이미 좌표가 설정되어 있습니다.")
-                    else:
-                        st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
-                    st.rerun()
-
+                map_data = pd.DataFrame(columns=required_map_cols)
+            else:
+                map_data = df_report_map[["city", "country", "lat", "lon", "final_allowance"]].copy()
+                map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
+                map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
+                map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
+                
             if map_data.empty:
                 st.caption("No data to display on the map. (Check if coordinates were generated.)")
             else:
@@ -1317,6 +1293,7 @@ with dashboard_tab:
                 min_cost = map_data['final_allowance'].min()
                 max_cost = map_data['final_allowance'].max()
                 range_cost = max_cost - min_cost if max_cost > min_cost else 1.0
+
 
                 def get_color_and_size(cost):
                     norm_cost = (cost - min_cost) / range_cost
@@ -1835,6 +1812,37 @@ with admin_analysis_tab:
                     st.error("Failed to process TSV data.")
                     progress_bar.empty()
                     return
+
+                # --- [신규] 리포트 안에 도시 좌표(lat/lon) 미리 생성해서 저장 ---
+                try:
+                    geolocator = Nominatim(
+                        user_agent=f"aicp_report_map_{random.randint(1000,9999)}"
+                    )
+                except Exception as e:
+                    st.warning(f"지도 좌표용 geopy 초기화 실패: {e}")
+                else:
+                    with st.spinner("지도용 도시 좌표를 생성하는 중입니다..."):
+                        for city in processed_data.get("cities", []):
+                            # 이미 좌표가 있으면 건너뜀
+                            if city.get("lat") and city.get("lon"):
+                                continue
+
+                            city_name = city.get("city")
+                            country_name = city.get("country_display")
+                            if not city_name or not country_name:
+                                continue
+
+                            query = f"{city_name}, {country_name}"
+                            try:
+                                location = geolocator.geocode(query, timeout=5)
+                                time.sleep(1)  # Nominatim rate limit
+                                if location:
+                                    city["lat"] = float(location.latitude)
+                                    city["lon"] = float(location.longitude)
+                            except Exception:
+                                # 좌표를 못 찾아도 전체 분석은 계속 진행
+                                continue
+                # --- [신규 끝] ---
 
                 # Create async OpenAI client
                 client = openai.AsyncOpenAI(api_key=openai_api_key)
