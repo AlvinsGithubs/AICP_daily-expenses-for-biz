@@ -1203,76 +1203,86 @@ else:
     st.session_state.employee_sections_visibility = _normalize_employee_sections(st.session_state.employee_sections_visibility)
 employee_sections_visibility = st.session_state.employee_sections_visibility
 
+# --- [NEW] Global Admin Access + Tab Layout (v21.0) ---
 
-# --- [Improvement 3 & New 2] Tab structure change (v18.0, updated) ---
+# .env 에 ADMIN_ACCESS_CODE 가 없으면 전체 앱 중단
+if not ACCESS_CODE_VALUE:
+    st.error(
+        "Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. "
+        "Please stop the app and set the .env file."
+    )
+    st.stop()
 
-tab_definitions = []
+# 현재 Admin 로그인 상태
+is_admin = bool(st.session_state.get(ACCESS_CODE_KEY, False))
 
-# 1) 직원용 탭 (옵션)
-if employee_tab_visible:
-    tab_definitions.append("💵 Per Diem Inquiry (Employee)")
+top_left, top_right = st.columns([6, 2])
 
-# 2) Admin용 탭들
-tab_definitions.append("📈 Report Analysis (Admin)")
-tab_definitions.append("🛠️ System Settings (Admin)")
+# 1) 왼쪽: 탭들
+with top_left:
+    tab_definitions = []
 
-# 3) Executive Dashboard를 맨 마지막, Admin용으로 배치
-tab_definitions.append("📊 Executive Dashboard (Admin)")
+    # (1) 직원용 탭 – 기본 첫 탭
+    if employee_tab_visible:
+        tab_definitions.append("💵 Per Diem Inquiry (Employee)")
 
-tabs = st.tabs(tab_definitions)
+    # (2) Admin 탭 – Access Code 통과 후에만 표시
+    if is_admin:
+        tab_definitions.append("📈 Report Analysis (Admin)")
+        tab_definitions.append("🛠️ System Settings (Admin)")
+        tab_definitions.append("📊 Executive Dashboard (Admin)")
 
-# 탭 인덱스 매핑
-idx = 0
-if employee_tab_visible:
-    employee_tab = tabs[idx]
-    idx += 1
-else:
-    employee_tab = None
+    # 탭이 하나도 없을 경우를 대비한 fallback (직원 탭Off + Admin 미로그인인 특수 케이스)
+    if not tab_definitions:
+        tab_definitions.append("🔒 Admin Login")
 
-admin_analysis_tab = tabs[idx]
-idx += 1
+    tabs = st.tabs(tab_definitions)
 
-admin_config_tab = tabs[idx]
-idx += 1
+    # 탭 인덱스 매핑
+    employee_tab = admin_analysis_tab = admin_config_tab = dashboard_tab = None
+    idx = 0
 
-dashboard_tab = tabs[idx]   # 마지막 탭이 Executive Dashboard
-# --- [End of modification] ---
+    if employee_tab_visible:
+        employee_tab = tabs[idx]
+        idx += 1
 
+    if is_admin:
+        admin_analysis_tab = tabs[idx]; idx += 1
+        admin_config_tab   = tabs[idx]; idx += 1
+        dashboard_tab      = tabs[idx]; idx += 1
 
-# --- [End of modification] ---
-
-with dashboard_tab:
-    # --- [NEW] Admin Access Guard for Executive Dashboard ---
-    if not ACCESS_CODE_VALUE:
-        st.error(
-            "Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. "
-            "Please stop the app and set the .env file."
+# 2) 오른쪽: 탭과 같은 라인에 Access Code 입력
+with top_right:
+    st.markdown("#### Admin Access")
+    with st.form("topbar_admin_access_form", clear_on_submit=True):
+        code_input = st.text_input(
+            "Access Code",
+            type="password",
+            placeholder="Enter admin code",
+            label_visibility="collapsed",
         )
-        st.stop()  # .env 자체가 잘못된 경우는 전체 앱 중단이 맞음
+        submitted = st.form_submit_button("Enter")
 
-    # 이미 로그인 되어 있는지 확인
-    is_admin = st.session_state.get(ACCESS_CODE_KEY, False)
+    if submitted:
+        if code_input == ACCESS_CODE_VALUE:
+            st.session_state[ACCESS_CODE_KEY] = True
+            st.success("Access granted. Admin tabs unlocked.")
+            st.rerun()
+        else:
+            st.error("The Access Code is incorrect.")
 
-    if not is_admin:
-        # ✅ 아직 Access Code를 안 넣은 상태 → 이 탭에서는 로그인 폼만 보여줌
-        st.warning("This dashboard is for administrators only. Please enter the Access Code.")
-        with st.form("admin_access_form_dashboard"):
-            input_code = st.text_input("Access Code", type="password")
-            submitted = st.form_submit_button("Enter")
-
-        if submitted:
-            if input_code == ACCESS_CODE_VALUE:
-                st.session_state[ACCESS_CODE_KEY] = True
-                st.success("Access granted.")
-                st.rerun()  # 로그인 성공 후 전체 다시 실행
-            else:
-                st.error("The Access Code is incorrect.")
-
-        # ❗ 여기서는 더 이상 st.stop()을 호출하지 않음
-        # is_admin == False 이므로 아래 else 블록(실제 대시보드 UI)은 실행되지 않음
-
+    if is_admin:
+        st.caption("✅ Admin mode is active.")
     else:
-        # ✅ 여기부터는 Access Code 검증에 성공한 경우에만 보이는 "진짜 대시보드" 화면
+        st.caption("🔒 Enter the Access Code to unlock admin-only tabs.")
+
+# 이 아래부터는 employee_tab / admin_analysis_tab / admin_config_tab / dashboard_tab 를 그대로 사용
+
+
+# --- [End of modification] ---
+if dashboard_tab is not None:
+    with dashboard_tab:
+        # 여기서는 바로 대시보드 UI만 그리면 됨
         st.header("Global Cost Dashboard")
         st.info("Visualizes the global business trip cost status based on the latest report data.")
 
@@ -1287,7 +1297,7 @@ with dashboard_tab:
         else:
             latest_report_file = history_files[0]
             st.subheader(f"Reference Report: `{latest_report_file}`")
-            
+          
             report_data = load_report_data(latest_report_file)
             config_entries = get_target_city_entries()
             
@@ -1721,342 +1731,346 @@ if employee_tab is not None:
                         st.info("The administrator has hidden the detailed calculation basis.")
 
 # --- [Improvement 2] Changed admin_tab -> admin_analysis_tab ---
-with admin_analysis_tab:
-    
-    if not ACCESS_CODE_VALUE:
-        st.error("Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. Please stop the app and set the .env file.")
-        st.stop()
-    
-    if not st.session_state.get(ACCESS_CODE_KEY, False):
-        with st.form("admin_access_form"):
-            input_code = st.text_input("Access Code", type="password")
-            submitted = st.form_submit_button("Enter")
-        if submitted:
-            if input_code == ACCESS_CODE_VALUE:
-                st.session_state[ACCESS_CODE_KEY] = True
-                st.success("Access granted.")
-                st.rerun() # [Improvement 3] Rerun on success
-            else:
-                st.error("The Access Code is incorrect.")
-                st.stop() # [Improvement 3] Stop on failure
-        else:
-            st.stop() # [Improvement 3] Stop before form submission
+if admin_analysis_tab is not None:
+    with admin_analysis_tab:
+        # 여기서는 Access Code 이미 통과한 상태라고 가정
+        st.subheader("Report Version Management")
 
-    # --- [Improvement 3] "Report Version Management" feature (analysis_sub_tab) ---
-    st.subheader("Report Version Management")
-    history_files = get_history_files()
-    if history_files:
-        if "selected_report_file" not in st.session_state:
-            st.session_state["selected_report_file"] = history_files[0]
-        if st.session_state["selected_report_file"] not in history_files:
-            st.session_state["selected_report_file"] = history_files[0]
-        default_index = history_files.index(st.session_state["selected_report_file"])
-        selected_file = st.selectbox("Select the active report version:", history_files, index=default_index, key="admin_report_file_select")
-        st.session_state["selected_report_file"] = selected_file
-    else:
-        st.info("No reports have been generated.")
-
-    # --- [New 4] Past Report Comparison feature (analysis_sub_tab) ---
-    st.divider()
-    st.subheader("Compare Past Reports")
-    if len(history_files) < 2:
-        st.info("At least 2 reports are required for comparison.")
-    else:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            file_a = st.selectbox("Base Report (A)", history_files, index=1, key="compare_a")
-        with col_b:
-            file_b = st.selectbox("Comparison Report (B)", history_files, index=0, key="compare_b")
+        history_files = get_history_files()
+        if not ACCESS_CODE_VALUE:
+            st.error("Security Error: 'ADMIN_ACCESS_CODE' is not set in the .env file. Please stop the app and set the .env file.")
+            st.stop()
         
-        if st.button("Compare Reports"):
-            if file_a == file_b:
-                st.warning("You must select two different reports.")
-            else:
-                with st.spinner("Comparing reports..."):
-                    data_a = load_report_data(file_a)
-                    data_b = load_report_data(file_b)
-                    
-                    if data_a and data_b and 'cities' in data_a and 'cities' in data_b:
-                        df_a = pd.DataFrame(data_a['cities'])[['city', 'country_display', 'final_allowance']]
-                        df_b = pd.DataFrame(data_b['cities'])[['city', 'country_display', 'final_allowance']]
-                        
-                        df_merged = pd.merge(df_a, df_b, on=["city", "country_display"], suffixes=("_A", "_B"))
-                        
-                        report_a_label = file_a.split('report_')[-1].split('.')[0]
-                        report_b_label = file_b.split('report_')[-1].split('.')[0]
-
-                        df_merged[f"A ({report_a_label})"] = df_merged["final_allowance_A"]
-                        df_merged[f"B ({report_b_label})"] = df_merged["final_allowance_B"]
-                        
-                        df_merged["Change ($)"] = df_merged["final_allowance_B"] - df_merged["final_allowance_A"]
-                        
-                        # Prevent division by zero
-                        df_merged["Change (%)"] = (df_merged["Change ($)"] / df_merged["final_allowance_A"].replace(0, pd.NA)) * 100
-                        
-                        st.dataframe(df_merged[[
-                            "city", "country_display", 
-                            f"A ({report_a_label})", 
-                            f"B ({report_b_label})", 
-                            "Change ($)", "Change (%)"
-                        ]].style.format({"Change (%)": "{:,.1f}%", "Change ($)": "{:,.0f}"}), width="stretch")
-                    else:
-                        st.error("Failed to load report files.")
-    
-    # --- [Improvement 3] "UN-DSA (PDF) Analysis" feature (analysis_sub_tab) ---
-    st.divider()
-    st.subheader("UN-DSA (PDF) Analysis & AI Execution")
-    st.warning(f"Note that the AI will be called {NUM_AI_CALLS} times, which will consume time and cost. (Improvement 1: Async processing for faster speed)")
-    uploaded_file = st.file_uploader("Upload UN-DSA PDF file.", type="pdf")
-
-    # --- [Improvement 1] Async AI analysis execution logic ---
-    if uploaded_file and st.button("Run AI Analysis", type="primary"):
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            st.error("Please set OPENAI_API_KEY in the .env file.")
-        else:
-            st.session_state.latest_analysis_result = None
-            
-            # --- Define async execution function ---
-            async def run_analysis(progress_bar, openai_api_key):
-                progress_bar.progress(0, text="Extracting PDF text...")
-                full_text = parse_pdf_to_text(uploaded_file)
-                
-                CHUNK_SIZE = 15000
-                text_chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
-                all_tsv_lines = []
-                analysis_failed = False
-                
-                for i, chunk in enumerate(text_chunks):
-                    progress_bar.progress(i / (len(text_chunks) + 1), text=f"AI PDF->TSV converting... ({i+1}/{len(text_chunks)})")
-                    chunk_tsv = call_openai_for_tsv_conversion(chunk, openai_api_key)
-                    if chunk_tsv:
-                        lines = chunk_tsv.strip().split('\n')
-                        if not all_tsv_lines:
-                            all_tsv_lines.extend(lines)
-                        else:
-                            all_tsv_lines.extend(lines[1:])
-                    else:
-                        analysis_failed = True
-                        break
-                
-                if analysis_failed:
-                    st.error("Failed to convert PDF->TSV.")
-                    progress_bar.empty()
-                    return
-
-                processed_data = process_tsv_data("\n".join(all_tsv_lines))
-                if not processed_data:
-                    st.error("Failed to process TSV data.")
-                    progress_bar.empty()
-                    return
-
-                # --- [신규] 리포트 안에 도시 좌표(lat/lon) 미리 생성해서 저장 ---
-                try:
-                    geolocator = Nominatim(
-                        user_agent=f"aicp_report_map_{random.randint(1000,9999)}"
-                    )
-                except Exception as e:
-                    st.warning(f"지도 좌표용 geopy 초기화 실패: {e}")
+        if not st.session_state.get(ACCESS_CODE_KEY, False):
+            with st.form("admin_access_form"):
+                input_code = st.text_input("Access Code", type="password")
+                submitted = st.form_submit_button("Enter")
+            if submitted:
+                if input_code == ACCESS_CODE_VALUE:
+                    st.session_state[ACCESS_CODE_KEY] = True
+                    st.success("Access granted.")
+                    st.rerun() # [Improvement 3] Rerun on success
                 else:
-                    with st.spinner("지도용 도시 좌표를 생성하는 중입니다..."):
-                        for city in processed_data.get("cities", []):
-                            # 이미 좌표가 있으면 건너뜀
-                            if city.get("lat") and city.get("lon"):
-                                continue
-
-                            city_name = city.get("city")
-                            country_name = city.get("country_display")
-                            if not city_name or not country_name:
-                                continue
-
-                            query = f"{city_name}, {country_name}"
-                            try:
-                                location = geolocator.geocode(query, timeout=5)
-                                time.sleep(1)  # Nominatim rate limit
-                                if location:
-                                    city["lat"] = float(location.latitude)
-                                    city["lon"] = float(location.longitude)
-                            except Exception:
-                                # 좌표를 못 찾아도 전체 분석은 계속 진행
-                                continue
-                # --- [신규 끝] ---
-
-                # Create async OpenAI client
-                client = openai.AsyncOpenAI(api_key=openai_api_key)
-                
-                total_cities = len(processed_data["cities"])
-                all_tasks = [] # List to hold all AI call tasks
-
-                # 1. Pre-create all AI call tasks for all cities
-                for city_data in processed_data["cities"]:
-                    city_name, country_name = city_data["city"], city_data["country_display"]
-                    city_context = {
-                        "neighborhood": city_data.get("neighborhood"),
-                        "hotel_cluster": city_data.get("hotel_cluster"),
-                    }
-                    season_context = city_data.get("season_context") or get_current_season_info(city_name, country_name)
-                    menu_samples = load_cached_menu_prices(city_name, country_name, city_context.get("neighborhood"))
-                    
-                    city_data["menu_samples"] = menu_samples
-                    city_data["reference_links"] = build_reference_link_lines(menu_samples, max_items=8)
-                    
-                    city_tasks = []
-                    for j in range(1, NUM_AI_CALLS + 1):
-                        task = get_market_data_from_ai_async(
-                            client, city_name, country_name, f"Run {j}",
-                            context=city_context, season_context=season_context, menu_samples=menu_samples
-                        )
-                        city_tasks.append(task)
-                    
-                    all_tasks.append(city_tasks) # [ [City1-10runs], [City2-10runs], ... ]
-
-                # 2. Execute all tasks asynchronously and collect results
-                city_index = 0
-                for city_tasks in all_tasks:
-                    city_data = processed_data["cities"][city_index]
-                    city_name = city_data["city"]
-                    progress_text = f"Calculating AI estimates... ({city_index+1}/{total_cities}) {city_name}"
-                    progress_bar.progress((city_index + 1) / max(total_cities, 1), text=progress_text)
-                    
-                    # Run 10 tasks for this city concurrently
-                    try:
-                        market_results = await asyncio.gather(*city_tasks)
-                    except Exception as e:
-                        st.error(f"Async error during {city_name} analysis: {e}")
-                        market_results = [] # Handle failure
-
-                    # 3. Process results
-                    ai_totals_source: List[int] = []
-                    ai_meta_runs: List[Dict[str, Any]] = []
-                    
-                    # [New 2] Lists for detailed cost breakdown
-                    ai_food: List[int] = []
-                    ai_transport: List[int] = []
-                    ai_misc: List[int] = []
-
-                    for j, market_result in enumerate(market_results, 1):
-                        city_data[f"market_data_{j}"] = market_result
-                        if market_result.get("status") == 'ok' and market_result.get("total") is not None:
-                            ai_totals_source.append(market_result["total"])
-                            # [New 2] Add detailed costs
-                            ai_food.append(market_result.get("food", 0))
-                            ai_transport.append(market_result.get("transport", 0))
-                            ai_misc.append(market_result.get("misc", 0))
-                        
-                        if "meta" in market_result:
-                            ai_meta_runs.append(market_result["meta"])
-                    
-                    city_data["ai_provenance"] = ai_meta_runs
-
-                    # 4. Calculate final allowance
-                    final_allowance = None
-                    un_per_diem_raw = city_data.get("un", {}).get("per_diem_excl_lodging")
-                    un_per_diem = float(un_per_diem_raw) if isinstance(un_per_diem_raw, (int, float)) else None
-
-                    ai_stats = aggregate_ai_totals(ai_totals_source)
-                    season_factor = (season_context or {}).get("factor", 1.0)
-                    ai_base_mean = ai_stats.get("mean_raw")
-                    ai_season_adjusted = ai_base_mean * season_factor if ai_base_mean is not None else None
-                    
-                    # [New 1] Calculate dynamic weights
-                    admin_weights = get_weight_config() # Load admin settings
-                    ai_vc_score = ai_stats.get("variation_coeff")
-                    
-                    if un_per_diem is not None:
-                        weights_cfg = get_dynamic_weights(ai_vc_score, admin_weights)
-                    else:
-                        # If no UN data, use AI 100%
-                        weights_cfg = {"un_weight": 0.0, "ai_weight": 1.0, "source": "AI Only (UN-DSA Missing)"}
-                    
-                    city_data["ai_summary"] = {
-                        "raw_totals": ai_totals_source,
-                        "used_totals": ai_stats.get("used_values", []),
-                        "removed_totals": ai_stats.get("removed_values", []),
-                        "mean_base": ai_base_mean,
-                        "mean_base_rounded": ai_stats.get("mean"),
-                        
-                        "ai_consistency_vc": ai_vc_score, # [New 1]
-                        
-                        "mean_food": mean(ai_food) if ai_food else 0, # [New 2]
-                        "mean_transport": mean(ai_transport) if ai_transport else 0, # [New 2]
-                        "mean_misc": mean(ai_misc) if ai_misc else 0, # [New 2]
-
-                        "season_factor": season_factor,
-                        "season_label": (season_context or {}).get("label"),
-                        "season_adjusted_mean_raw": ai_season_adjusted,
-                        "season_adjusted_mean_rounded": round(ai_season_adjusted) if ai_season_adjusted is not None else None,
-                        "successful_runs": len(ai_stats.get("used_values", [])),
-                        "attempted_runs": NUM_AI_CALLS,
-                        "reference_links": city_data.get("reference_links", []),
-                        "weighted_average_components": {
-                            "un_per_diem": un_per_diem,
-                            "ai_season_adjusted": ai_season_adjusted,
-                            "weights": weights_cfg, # [New 1] Save dynamic weights
-                        },
-                    }
-
-                    # [New 1] Calculate final value with dynamic weights
-                    if un_per_diem is not None and ai_season_adjusted is not None:
-                        weighted_average = (un_per_diem * weights_cfg["un_weight"]) + (ai_season_adjusted * weights_cfg["ai_weight"])
-                        final_allowance = round(weighted_average)
-                    elif un_per_diem is not None:
-                        final_allowance = round(un_per_diem)
-                    elif ai_season_adjusted is not None:
-                        final_allowance = round(ai_season_adjusted)
-
-                    city_data["final_allowance"] = final_allowance
-
-                    if final_allowance and un_per_diem and un_per_diem > 0:
-                        city_data["delta_vs_un_pct"] = round(((final_allowance - un_per_diem) / un_per_diem) * 100)
-                    else:
-                        city_data["delta_vs_un_pct"] = "N/A"
-                    
-                    city_index += 1 # Next city
-
-                save_report_data(processed_data)
-                st.session_state.latest_analysis_result = processed_data
-                st.success("AI analysis completed.")
-                progress_bar.empty()
-                st.rerun()
-            
-            # --- Async execution ---
-            with st.spinner("Processing PDF and running AI analysis... (Takes approx. 10-30 seconds)"):
-                progress_bar = st.progress(0, text="Starting analysis...")
-                asyncio.run(run_analysis(progress_bar, openai_api_key))
-
-    # --- [Improvement 3] "Latest Analysis Summary" feature (analysis_sub_tab) ---
-    if st.session_state.latest_analysis_result:
-        st.markdown("---")
-        st.subheader("Latest Analysis Summary")
-        df_data = []
-        for city in st.session_state.latest_analysis_result['cities']:
-            row = {
-                'City': city.get('city', 'N/A'),
-                'Country': city.get('country_display', 'N/A'),
-                'UN-DSA': city.get('un', {}).get('per_diem_excl_lodging'),
-            }
-            for j in range(1, NUM_AI_CALLS + 1):
-                row[f"AI {j}"] = city.get(f'market_data_{j}', {}).get('total')
-
-            # --- [HOTFIX] Prevent ArrowInvalid Error ---
-            delta_val = city.get('delta_vs_un_pct')
-            if isinstance(delta_val, (int, float)):
-                delta_display = f"{delta_val:.0f}%" # Change number to string format like "12%"
+                    st.error("The Access Code is incorrect.")
+                    st.stop() # [Improvement 3] Stop on failure
             else:
-                delta_display = "N/A" # Already "N/A" string
-            # --- [HOTFIX] End ---
-                
-            row.update({
-                'Final Allowance': city.get('final_allowance'),
-                'Delta (%)': delta_display, # <-- Use modified string value
-                'Trip Lengths': DEFAULT_TRIP_LENGTH[0],
-                'Notes': city.get('notes', ''),
-            })
-            df_data.append(row)
+                st.stop() # [Improvement 3] Stop before form submission
 
-        st.dataframe(pd.DataFrame(df_data), use_container_width=True) # <-- Added use_container_width (change to width='stretch' if needed)
-        with st.expander("View generated markdown report"):
-            st.markdown(generate_markdown_report(st.session_state.latest_analysis_result))
+        # --- [Improvement 3] "Report Version Management" feature (analysis_sub_tab) ---
+        st.subheader("Report Version Management")
+        history_files = get_history_files()
+        if history_files:
+            if "selected_report_file" not in st.session_state:
+                st.session_state["selected_report_file"] = history_files[0]
+            if st.session_state["selected_report_file"] not in history_files:
+                st.session_state["selected_report_file"] = history_files[0]
+            default_index = history_files.index(st.session_state["selected_report_file"])
+            selected_file = st.selectbox("Select the active report version:", history_files, index=default_index, key="admin_report_file_select")
+            st.session_state["selected_report_file"] = selected_file
+        else:
+            st.info("No reports have been generated.")
+
+        # --- [New 4] Past Report Comparison feature (analysis_sub_tab) ---
+        st.divider()
+        st.subheader("Compare Past Reports")
+        if len(history_files) < 2:
+            st.info("At least 2 reports are required for comparison.")
+        else:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                file_a = st.selectbox("Base Report (A)", history_files, index=1, key="compare_a")
+            with col_b:
+                file_b = st.selectbox("Comparison Report (B)", history_files, index=0, key="compare_b")
+            
+            if st.button("Compare Reports"):
+                if file_a == file_b:
+                    st.warning("You must select two different reports.")
+                else:
+                    with st.spinner("Comparing reports..."):
+                        data_a = load_report_data(file_a)
+                        data_b = load_report_data(file_b)
+                        
+                        if data_a and data_b and 'cities' in data_a and 'cities' in data_b:
+                            df_a = pd.DataFrame(data_a['cities'])[['city', 'country_display', 'final_allowance']]
+                            df_b = pd.DataFrame(data_b['cities'])[['city', 'country_display', 'final_allowance']]
+                            
+                            df_merged = pd.merge(df_a, df_b, on=["city", "country_display"], suffixes=("_A", "_B"))
+                            
+                            report_a_label = file_a.split('report_')[-1].split('.')[0]
+                            report_b_label = file_b.split('report_')[-1].split('.')[0]
+
+                            df_merged[f"A ({report_a_label})"] = df_merged["final_allowance_A"]
+                            df_merged[f"B ({report_b_label})"] = df_merged["final_allowance_B"]
+                            
+                            df_merged["Change ($)"] = df_merged["final_allowance_B"] - df_merged["final_allowance_A"]
+                            
+                            # Prevent division by zero
+                            df_merged["Change (%)"] = (df_merged["Change ($)"] / df_merged["final_allowance_A"].replace(0, pd.NA)) * 100
+                            
+                            st.dataframe(df_merged[[
+                                "city", "country_display", 
+                                f"A ({report_a_label})", 
+                                f"B ({report_b_label})", 
+                                "Change ($)", "Change (%)"
+                            ]].style.format({"Change (%)": "{:,.1f}%", "Change ($)": "{:,.0f}"}), width="stretch")
+                        else:
+                            st.error("Failed to load report files.")
+        
+        # --- [Improvement 3] "UN-DSA (PDF) Analysis" feature (analysis_sub_tab) ---
+        st.divider()
+        st.subheader("UN-DSA (PDF) Analysis & AI Execution")
+        st.warning(f"Note that the AI will be called {NUM_AI_CALLS} times, which will consume time and cost. (Improvement 1: Async processing for faster speed)")
+        uploaded_file = st.file_uploader("Upload UN-DSA PDF file.", type="pdf")
+
+        # --- [Improvement 1] Async AI analysis execution logic ---
+        if uploaded_file and st.button("Run AI Analysis", type="primary"):
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                st.error("Please set OPENAI_API_KEY in the .env file.")
+            else:
+                st.session_state.latest_analysis_result = None
+                
+                # --- Define async execution function ---
+                async def run_analysis(progress_bar, openai_api_key):
+                    progress_bar.progress(0, text="Extracting PDF text...")
+                    full_text = parse_pdf_to_text(uploaded_file)
+                    
+                    CHUNK_SIZE = 15000
+                    text_chunks = [full_text[i:i + CHUNK_SIZE] for i in range(0, len(full_text), CHUNK_SIZE)]
+                    all_tsv_lines = []
+                    analysis_failed = False
+                    
+                    for i, chunk in enumerate(text_chunks):
+                        progress_bar.progress(i / (len(text_chunks) + 1), text=f"AI PDF->TSV converting... ({i+1}/{len(text_chunks)})")
+                        chunk_tsv = call_openai_for_tsv_conversion(chunk, openai_api_key)
+                        if chunk_tsv:
+                            lines = chunk_tsv.strip().split('\n')
+                            if not all_tsv_lines:
+                                all_tsv_lines.extend(lines)
+                            else:
+                                all_tsv_lines.extend(lines[1:])
+                        else:
+                            analysis_failed = True
+                            break
+                    
+                    if analysis_failed:
+                        st.error("Failed to convert PDF->TSV.")
+                        progress_bar.empty()
+                        return
+
+                    processed_data = process_tsv_data("\n".join(all_tsv_lines))
+                    if not processed_data:
+                        st.error("Failed to process TSV data.")
+                        progress_bar.empty()
+                        return
+
+                    # --- [신규] 리포트 안에 도시 좌표(lat/lon) 미리 생성해서 저장 ---
+                    try:
+                        geolocator = Nominatim(
+                            user_agent=f"aicp_report_map_{random.randint(1000,9999)}"
+                        )
+                    except Exception as e:
+                        st.warning(f"지도 좌표용 geopy 초기화 실패: {e}")
+                    else:
+                        with st.spinner("지도용 도시 좌표를 생성하는 중입니다..."):
+                            for city in processed_data.get("cities", []):
+                                # 이미 좌표가 있으면 건너뜀
+                                if city.get("lat") and city.get("lon"):
+                                    continue
+
+                                city_name = city.get("city")
+                                country_name = city.get("country_display")
+                                if not city_name or not country_name:
+                                    continue
+
+                                query = f"{city_name}, {country_name}"
+                                try:
+                                    location = geolocator.geocode(query, timeout=5)
+                                    time.sleep(1)  # Nominatim rate limit
+                                    if location:
+                                        city["lat"] = float(location.latitude)
+                                        city["lon"] = float(location.longitude)
+                                except Exception:
+                                    # 좌표를 못 찾아도 전체 분석은 계속 진행
+                                    continue
+                    # --- [신규 끝] ---
+
+                    # Create async OpenAI client
+                    client = openai.AsyncOpenAI(api_key=openai_api_key)
+                    
+                    total_cities = len(processed_data["cities"])
+                    all_tasks = [] # List to hold all AI call tasks
+
+                    # 1. Pre-create all AI call tasks for all cities
+                    for city_data in processed_data["cities"]:
+                        city_name, country_name = city_data["city"], city_data["country_display"]
+                        city_context = {
+                            "neighborhood": city_data.get("neighborhood"),
+                            "hotel_cluster": city_data.get("hotel_cluster"),
+                        }
+                        season_context = city_data.get("season_context") or get_current_season_info(city_name, country_name)
+                        menu_samples = load_cached_menu_prices(city_name, country_name, city_context.get("neighborhood"))
+                        
+                        city_data["menu_samples"] = menu_samples
+                        city_data["reference_links"] = build_reference_link_lines(menu_samples, max_items=8)
+                        
+                        city_tasks = []
+                        for j in range(1, NUM_AI_CALLS + 1):
+                            task = get_market_data_from_ai_async(
+                                client, city_name, country_name, f"Run {j}",
+                                context=city_context, season_context=season_context, menu_samples=menu_samples
+                            )
+                            city_tasks.append(task)
+                        
+                        all_tasks.append(city_tasks) # [ [City1-10runs], [City2-10runs], ... ]
+
+                    # 2. Execute all tasks asynchronously and collect results
+                    city_index = 0
+                    for city_tasks in all_tasks:
+                        city_data = processed_data["cities"][city_index]
+                        city_name = city_data["city"]
+                        progress_text = f"Calculating AI estimates... ({city_index+1}/{total_cities}) {city_name}"
+                        progress_bar.progress((city_index + 1) / max(total_cities, 1), text=progress_text)
+                        
+                        # Run 10 tasks for this city concurrently
+                        try:
+                            market_results = await asyncio.gather(*city_tasks)
+                        except Exception as e:
+                            st.error(f"Async error during {city_name} analysis: {e}")
+                            market_results = [] # Handle failure
+
+                        # 3. Process results
+                        ai_totals_source: List[int] = []
+                        ai_meta_runs: List[Dict[str, Any]] = []
+                        
+                        # [New 2] Lists for detailed cost breakdown
+                        ai_food: List[int] = []
+                        ai_transport: List[int] = []
+                        ai_misc: List[int] = []
+
+                        for j, market_result in enumerate(market_results, 1):
+                            city_data[f"market_data_{j}"] = market_result
+                            if market_result.get("status") == 'ok' and market_result.get("total") is not None:
+                                ai_totals_source.append(market_result["total"])
+                                # [New 2] Add detailed costs
+                                ai_food.append(market_result.get("food", 0))
+                                ai_transport.append(market_result.get("transport", 0))
+                                ai_misc.append(market_result.get("misc", 0))
+                            
+                            if "meta" in market_result:
+                                ai_meta_runs.append(market_result["meta"])
+                        
+                        city_data["ai_provenance"] = ai_meta_runs
+
+                        # 4. Calculate final allowance
+                        final_allowance = None
+                        un_per_diem_raw = city_data.get("un", {}).get("per_diem_excl_lodging")
+                        un_per_diem = float(un_per_diem_raw) if isinstance(un_per_diem_raw, (int, float)) else None
+
+                        ai_stats = aggregate_ai_totals(ai_totals_source)
+                        season_factor = (season_context or {}).get("factor", 1.0)
+                        ai_base_mean = ai_stats.get("mean_raw")
+                        ai_season_adjusted = ai_base_mean * season_factor if ai_base_mean is not None else None
+                        
+                        # [New 1] Calculate dynamic weights
+                        admin_weights = get_weight_config() # Load admin settings
+                        ai_vc_score = ai_stats.get("variation_coeff")
+                        
+                        if un_per_diem is not None:
+                            weights_cfg = get_dynamic_weights(ai_vc_score, admin_weights)
+                        else:
+                            # If no UN data, use AI 100%
+                            weights_cfg = {"un_weight": 0.0, "ai_weight": 1.0, "source": "AI Only (UN-DSA Missing)"}
+                        
+                        city_data["ai_summary"] = {
+                            "raw_totals": ai_totals_source,
+                            "used_totals": ai_stats.get("used_values", []),
+                            "removed_totals": ai_stats.get("removed_values", []),
+                            "mean_base": ai_base_mean,
+                            "mean_base_rounded": ai_stats.get("mean"),
+                            
+                            "ai_consistency_vc": ai_vc_score, # [New 1]
+                            
+                            "mean_food": mean(ai_food) if ai_food else 0, # [New 2]
+                            "mean_transport": mean(ai_transport) if ai_transport else 0, # [New 2]
+                            "mean_misc": mean(ai_misc) if ai_misc else 0, # [New 2]
+
+                            "season_factor": season_factor,
+                            "season_label": (season_context or {}).get("label"),
+                            "season_adjusted_mean_raw": ai_season_adjusted,
+                            "season_adjusted_mean_rounded": round(ai_season_adjusted) if ai_season_adjusted is not None else None,
+                            "successful_runs": len(ai_stats.get("used_values", [])),
+                            "attempted_runs": NUM_AI_CALLS,
+                            "reference_links": city_data.get("reference_links", []),
+                            "weighted_average_components": {
+                                "un_per_diem": un_per_diem,
+                                "ai_season_adjusted": ai_season_adjusted,
+                                "weights": weights_cfg, # [New 1] Save dynamic weights
+                            },
+                        }
+
+                        # [New 1] Calculate final value with dynamic weights
+                        if un_per_diem is not None and ai_season_adjusted is not None:
+                            weighted_average = (un_per_diem * weights_cfg["un_weight"]) + (ai_season_adjusted * weights_cfg["ai_weight"])
+                            final_allowance = round(weighted_average)
+                        elif un_per_diem is not None:
+                            final_allowance = round(un_per_diem)
+                        elif ai_season_adjusted is not None:
+                            final_allowance = round(ai_season_adjusted)
+
+                        city_data["final_allowance"] = final_allowance
+
+                        if final_allowance and un_per_diem and un_per_diem > 0:
+                            city_data["delta_vs_un_pct"] = round(((final_allowance - un_per_diem) / un_per_diem) * 100)
+                        else:
+                            city_data["delta_vs_un_pct"] = "N/A"
+                        
+                        city_index += 1 # Next city
+
+                    save_report_data(processed_data)
+                    st.session_state.latest_analysis_result = processed_data
+                    st.success("AI analysis completed.")
+                    progress_bar.empty()
+                    st.rerun()
+                
+                # --- Async execution ---
+                with st.spinner("Processing PDF and running AI analysis... (Takes approx. 10-30 seconds)"):
+                    progress_bar = st.progress(0, text="Starting analysis...")
+                    asyncio.run(run_analysis(progress_bar, openai_api_key))
+
+        # --- [Improvement 3] "Latest Analysis Summary" feature (analysis_sub_tab) ---
+        if st.session_state.latest_analysis_result:
+            st.markdown("---")
+            st.subheader("Latest Analysis Summary")
+            df_data = []
+            for city in st.session_state.latest_analysis_result['cities']:
+                row = {
+                    'City': city.get('city', 'N/A'),
+                    'Country': city.get('country_display', 'N/A'),
+                    'UN-DSA': city.get('un', {}).get('per_diem_excl_lodging'),
+                }
+                for j in range(1, NUM_AI_CALLS + 1):
+                    row[f"AI {j}"] = city.get(f'market_data_{j}', {}).get('total')
+
+                # --- [HOTFIX] Prevent ArrowInvalid Error ---
+                delta_val = city.get('delta_vs_un_pct')
+                if isinstance(delta_val, (int, float)):
+                    delta_display = f"{delta_val:.0f}%" # Change number to string format like "12%"
+                else:
+                    delta_display = "N/A" # Already "N/A" string
+                # --- [HOTFIX] End ---
+                    
+                row.update({
+                    'Final Allowance': city.get('final_allowance'),
+                    'Delta (%)': delta_display, # <-- Use modified string value
+                    'Trip Lengths': DEFAULT_TRIP_LENGTH[0],
+                    'Notes': city.get('notes', ''),
+                })
+                df_data.append(row)
+
+            st.dataframe(pd.DataFrame(df_data), use_container_width=True) # <-- Added use_container_width (change to width='stretch' if needed)
+            with st.expander("View generated markdown report"):
+                st.markdown(generate_markdown_report(st.session_state.latest_analysis_result))
 
 
 def auto_fill_all_city_coordinates() -> tuple[int, int]:
@@ -2115,409 +2129,418 @@ def auto_fill_all_city_coordinates() -> tuple[int, int]:
 
 
 # --- [개선 3] "시스템 설정" 탭 (admin_config_tab) ---
-with admin_config_tab:
-    # 암호 확인 (필수)
-    if not st.session_state.get(ACCESS_CODE_KEY, False):
-        st.error("Access Code가 필요합니다. '보고서 분석 (Admin)' 탭에서 먼저 로그인해주세요.")
-        st.stop()
-        
-    # --- [v19.3] 도시 편집/캐시 관리가 공유할 도시 목록을 탭 상단에서 정의 ---
-    current_entries = get_target_city_entries()
-    options = {
-        f"{entry['region']} | {entry['country']} | {entry['city']}": idx
-        for idx, entry in enumerate(current_entries)
-    }
-    sorted_labels = list(options.keys())
-    
-    # --- 콜백 함수 1: '도시 편집' 폼 동기화 ---
-    def _sync_edit_form_from_selection():
-        if "edit_city_selector" not in st.session_state or not st.session_state.edit_city_selector:
-             # st.session_state.edit_city_selector가 비어있거나 None일 때
-             if sorted_labels:
-                 st.session_state.edit_city_selector = sorted_labels[0]
-             else:
-                 return # 도시가 하나도 없으면 중단
-             
-        selected_idx = options[st.session_state.edit_city_selector]
-        selected_entry = current_entries[selected_idx]
-        
-        st.session_state.edit_region = selected_entry.get("region", "")
-        st.session_state.edit_city = selected_entry.get("city", "")
-        st.session_state.edit_neighborhood = selected_entry.get("neighborhood", "")
-        st.session_state.edit_country = selected_entry.get("country", "")
-        st.session_state.edit_hotel = selected_entry.get("hotel_cluster", "")
-        
-        existing_trip_lengths = [t for t in selected_entry.get("trip_lengths", []) if t in TRIP_LENGTH_OPTIONS]
-        st.session_state.edit_trip_lengths = existing_trip_lengths or DEFAULT_TRIP_LENGTH.copy()
-        
-        sub_data = selected_entry.get("un_dsa_substitute") or {}
-        st.session_state.edit_sub_city = sub_data.get("city", "")
-        st.session_state.edit_sub_country = sub_data.get("country", "")
-
-    # --- [v19.3] 콜백 함수 2: '캐시 추가' 폼 동기화 ---
-    def _sync_cache_form_from_selection():
-        selected_label = st.session_state.get("cache_city_selector") # get()으로 오류 방지
-        
-        if selected_label in options: # 'options' dict를 공유
-            selected_idx = options[selected_label]
-            selected_entry = current_entries[selected_idx]
-            st.session_state.new_cache_country = selected_entry.get("country", "")
-            st.session_state.new_cache_city = selected_entry.get("city", "")
-            st.session_state.new_cache_neighborhood = selected_entry.get("neighborhood", "")
-        else: # (placeholder 선택 시)
-            st.session_state.new_cache_country = ""
-            st.session_state.new_cache_city = ""
-            st.session_state.new_cache_neighborhood = ""
-        
-        # 나머지 필드는 항상 기본값으로 초기화
-        st.session_state.new_cache_vendor = ""
-        st.session_state.new_cache_category = "Food"
-        st.session_state.new_cache_price = 0.0
-        st.session_state.new_cache_currency = "USD"
-        st.session_state.new_cache_url = ""
-
-    # --- [v19.3 핫픽스] 콜백 함수 3: '캐시 저장' 로직 ---
-    def handle_cache_submit():
-        # 1. 유효성 검사
-        if (not st.session_state.new_cache_country or 
-            not st.session_state.new_cache_city or 
-            not st.session_state.new_cache_vendor):
-            st.error("국가, 도시, 장소/상품명은 필수입니다.")
-            return # 여기서 중단 (폼 값 유지됨)
-
-        # 2. 새 항목 생성
-        new_entry = {
-            "country": st.session_state.new_cache_country.strip(),
-            "city": st.session_state.new_cache_city.strip(),
-            "neighborhood": st.session_state.new_cache_neighborhood.strip(),
-            "vendor": st.session_state.new_cache_vendor.strip(),
-            "category": st.session_state.new_cache_category,
-            "price": st.session_state.new_cache_price,
-            "currency": st.session_state.new_cache_currency.strip().upper(),
-            "url": st.session_state.new_cache_url.strip(),
+if admin_config_tab is not None:
+    with admin_config_tab:
+        # 이미 Admin 탭이 보인 시점에서 Access Code 검증 완료 상태
+        # 바로 설정 UI 렌더링
+        current_entries = get_target_city_entries()
+        options = {
+            f"{entry['region']} | {entry['country']} | {entry['city']}": idx
+            for idx, entry in enumerate(current_entries)
         }
-        
-        # 3. 파일에 저장
-        if add_menu_cache_entry(new_entry):
-            st.success(f"'{new_entry['vendor']}' 항목을 캐시에 추가했습니다.")
+        sorted_labels = list(options.keys())
+        # 암호 확인 (필수)
+        if not st.session_state.get(ACCESS_CODE_KEY, False):
+            st.error("Access Code가 필요합니다. '보고서 분석 (Admin)' 탭에서 먼저 로그인해주세요.")
+            st.stop()
             
-            # 4. (중요) 폼 리셋: session_state 값들을 수동으로 초기화
-            # 이 로직은 on_click 콜백 내부에서 실행되므로 안전합니다.
-            st.session_state.new_cache_country = ""
-            st.session_state.new_cache_city = ""
-            st.session_state.new_cache_neighborhood = ""
+        # --- [v19.3] 도시 편집/캐시 관리가 공유할 도시 목록을 탭 상단에서 정의 ---
+        current_entries = get_target_city_entries()
+        options = {
+            f"{entry['region']} | {entry['country']} | {entry['city']}": idx
+            for idx, entry in enumerate(current_entries)
+        }
+        sorted_labels = list(options.keys())
+        
+        # --- 콜백 함수 1: '도시 편집' 폼 동기화 ---
+        def _sync_edit_form_from_selection():
+            if "edit_city_selector" not in st.session_state or not st.session_state.edit_city_selector:
+                # st.session_state.edit_city_selector가 비어있거나 None일 때
+                if sorted_labels:
+                    st.session_state.edit_city_selector = sorted_labels[0]
+                else:
+                    return # 도시가 하나도 없으면 중단
+                
+            selected_idx = options[st.session_state.edit_city_selector]
+            selected_entry = current_entries[selected_idx]
+            
+            st.session_state.edit_region = selected_entry.get("region", "")
+            st.session_state.edit_city = selected_entry.get("city", "")
+            st.session_state.edit_neighborhood = selected_entry.get("neighborhood", "")
+            st.session_state.edit_country = selected_entry.get("country", "")
+            st.session_state.edit_hotel = selected_entry.get("hotel_cluster", "")
+            
+            existing_trip_lengths = [t for t in selected_entry.get("trip_lengths", []) if t in TRIP_LENGTH_OPTIONS]
+            st.session_state.edit_trip_lengths = existing_trip_lengths or DEFAULT_TRIP_LENGTH.copy()
+            
+            sub_data = selected_entry.get("un_dsa_substitute") or {}
+            st.session_state.edit_sub_city = sub_data.get("city", "")
+            st.session_state.edit_sub_country = sub_data.get("country", "")
+
+        # --- [v19.3] 콜백 함수 2: '캐시 추가' 폼 동기화 ---
+        def _sync_cache_form_from_selection():
+            selected_label = st.session_state.get("cache_city_selector") # get()으로 오류 방지
+            
+            if selected_label in options: # 'options' dict를 공유
+                selected_idx = options[selected_label]
+                selected_entry = current_entries[selected_idx]
+                st.session_state.new_cache_country = selected_entry.get("country", "")
+                st.session_state.new_cache_city = selected_entry.get("city", "")
+                st.session_state.new_cache_neighborhood = selected_entry.get("neighborhood", "")
+            else: # (placeholder 선택 시)
+                st.session_state.new_cache_country = ""
+                st.session_state.new_cache_city = ""
+                st.session_state.new_cache_neighborhood = ""
+            
+            # 나머지 필드는 항상 기본값으로 초기화
             st.session_state.new_cache_vendor = ""
             st.session_state.new_cache_category = "Food"
             st.session_state.new_cache_price = 0.0
             st.session_state.new_cache_currency = "USD"
             st.session_state.new_cache_url = ""
-            st.session_state.cache_city_selector = None # 드롭다운도 리셋
+
+        # --- [v19.3 핫픽스] 콜백 함수 3: '캐시 저장' 로직 ---
+        def handle_cache_submit():
+            # 1. 유효성 검사
+            if (not st.session_state.new_cache_country or 
+                not st.session_state.new_cache_city or 
+                not st.session_state.new_cache_vendor):
+                st.error("국가, 도시, 장소/상품명은 필수입니다.")
+                return # 여기서 중단 (폼 값 유지됨)
+
+            # 2. 새 항목 생성
+            new_entry = {
+                "country": st.session_state.new_cache_country.strip(),
+                "city": st.session_state.new_cache_city.strip(),
+                "neighborhood": st.session_state.new_cache_neighborhood.strip(),
+                "vendor": st.session_state.new_cache_vendor.strip(),
+                "category": st.session_state.new_cache_category,
+                "price": st.session_state.new_cache_price,
+                "currency": st.session_state.new_cache_currency.strip().upper(),
+                "url": st.session_state.new_cache_url.strip(),
+            }
             
-            # st.rerun()은 on_click 콜백이 끝나면 자동으로 호출되므로 명시적으로 호출할 필요 없음
-        else:
-            st.error("캐시 항목 추가에 실패했습니다.")
-    # --- [v19.3 핫픽스] 끝 ---
-
-    st.subheader("직원용 탭 노출")
-    visibility_toggle = st.toggle("직원용 탭 노출", value=employee_tab_visible, key="employee_tab_visibility_toggle") # Key 이름 변경
-    if visibility_toggle != stored_employee_tab_visible:
-        updated_settings = dict(ui_settings)
-        updated_settings["show_employee_tab"] = visibility_toggle
-        updated_settings["employee_sections"] = employee_sections_visibility
-        save_ui_settings(updated_settings)
-        ui_settings = updated_settings
-        st.session_state.employee_tab_visibility = visibility_toggle # 세션 상태에도 반영
-        st.success("직원용 탭 노출 상태가 업데이트되었습니다. (새로고침 시 적용)")
-        time.sleep(1) # 유저가 메시지를 읽을 시간을 줌
-        st.rerun()
-
-    st.subheader("직원 화면 노출 설정")
-    section_toggle_values: Dict[str, bool] = {}
-    for section_key, label in EMPLOYEE_SECTION_LABELS:
-        current_value = employee_sections_visibility.get(section_key, EMPLOYEE_SECTION_DEFAULTS.get(section_key, True))
-        section_toggle_values[section_key] = st.toggle(
-            label,
-            value=current_value,
-            key=f"employee_section_toggle_{section_key}",
-        )
-    if section_toggle_values != employee_sections_visibility:
-        updated_settings = dict(ui_settings)
-        updated_settings["employee_sections"] = section_toggle_values
-        save_ui_settings(updated_settings)
-        ui_settings["employee_sections"] = section_toggle_values
-        st.session_state.employee_sections_visibility = section_toggle_values
-        employee_sections_visibility = section_toggle_values
-        st.success("직원 화면 노출 설정이 업데이트되었습니다.")
-        time.sleep(1)
-        st.rerun()
-
-    st.divider()
-    st.subheader("비중 설정 (기본값)")
-    st.info("이제 이 설정은 '동적 가중치' 로직의 기본값으로 사용됩니다. AI 응답이 불안정하면 자동으로 AI 비중이 낮아집니다.")
-    current_weights = get_weight_config()
-    st.caption(f"Current Admin Default -> UN {current_weights.get('un_weight', 0.5):.0%} / AI {current_weights.get('ai_weight', 0.5):.0%}")
-    with st.form("weight_config_form"):
-        un_weight_input = st.slider("UN-DSA weight", min_value=0.0, max_value=1.0, value=float(current_weights.get("un_weight", 0.5)), step=0.05, format="%.2f")
-        ai_weight_preview = max(0.0, 1.0 - un_weight_input)
-        st.write(f"AI market estimate weight: **{ai_weight_preview:.2f}**")
-        st.caption("Weights are normalised to sum to 1.0 when saved.")
-        weight_submit = st.form_submit_button("Save weights")
-    if weight_submit:
-        updated = update_weight_config(un_weight_input, ai_weight_preview)
-        st.success(f"Weights saved (UN {updated['un_weight']:.2f} / AI {updated['ai_weight']:.2f})")
-        st.rerun()
-
-    st.divider()
-    st.header("목표 도시 관리 (target_cities_config.json)")
-    entries_df = pd.DataFrame(get_target_city_entries())
-    if not entries_df.empty:
-        entries_display = entries_df.copy()
-        # trip_lengths를 보기 쉽게 문자열로 변환
-        entries_display["trip_lengths"] = entries_display["trip_lengths"].apply(lambda x: ', '.join(x) if isinstance(x, list) else DEFAULT_TRIP_LENGTH[0])
-        st.dataframe(entries_display[["region", "country", "city", "neighborhood", "hotel_cluster", "trip_lengths"]], width='stretch') # [v19.3] 경고 수정
-    else:
-        st.info("등록된 목표 도시가 없습니다. 아래에서 새 항목을 추가해 주세요.")
-
-    # --- [신규 2] 도시 좌표 자동 완성 기능 (새로 추가) ---
-    st.divider()
-    st.subheader("도시 좌표 관리")
-    
-    if st.button(
-        "모든 도시 좌표(Lat/Lon) 자동 완성",
-        help="target_cities_config.json의 모든 도시를 대상으로 좌표가 없는 도시에 대해 geopy를 호출해 좌표를 자동 저장합니다.",
-    ):
-        success_count, fail_count = auto_fill_all_city_coordinates()
-
-        if success_count == 0 and fail_count == 0:
-            st.success("모든 도시에 이미 좌표가 설정되어 있습니다. (업데이트 불필요)")
-        else:
-            st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
-        st.rerun()
-
-    # --- [신규 2] 끝 ---
-
-
-    existing_regions = sorted({entry["region"] for entry in get_target_city_entries()})
-    st.subheader("신규 도시 추가")
-    with st.form("add_target_city_form", clear_on_submit=True):
-        col_a, col_b = st.columns(2)
-        with col_a:
-            region_options = existing_regions + ["기타 (직접 입력)"]
-            region_choice = st.selectbox("지역", region_options, key="add_region_choice")
-            new_region = ""
-            if region_choice == "기타 (직접 입력)":
-                new_region = st.text_input("새 지역 이름", key="add_region_text")
-        with col_b:
-            trip_lengths_selected = st.multiselect("출장 기간", TRIP_LENGTH_OPTIONS, default=DEFAULT_TRIP_LENGTH, key="add_trip_lengths")
-
-        col_c, col_d = st.columns(2)
-        with col_c:
-            city_name = st.text_input("도시", key="add_city")
-            neighborhood = st.text_input("세부 지역 (선택)", key="add_neighborhood")
-        with col_d:
-            country_name = st.text_input("국가", key="add_country")
-            hotel_cluster = st.text_input("추천 호텔 클러스터 (선택)", key="add_hotel_cluster")
-
-        with st.expander("UN-DSA 대체 도시 (선택)"):
-            substitute_city = st.text_input("대체 도시", key="add_sub_city")
-            substitute_country = st.text_input("대체 국가", key="add_sub_country")
-
-        add_submitted = st.form_submit_button("추가")
-
-    if add_submitted:
-        region_value = new_region.strip() if region_choice == "기타 (직접 입력)" else region_choice
-        if not region_value or not city_name.strip() or not country_name.strip():
-            st.error("지역, 국가, 도시는 필수로 입력해 주세요.")
-        else:
-            current_entries = get_target_city_entries()
-            canonical_key = (region_value.lower(), country_name.strip().lower(), city_name.strip().lower())
-            duplicate_exists = any(
-                (entry.get("region", "").lower(), entry.get("country", "").lower(), entry.get("city", "").lower()) == canonical_key
-                for entry in current_entries
-            )
-            if duplicate_exists:
-                st.warning("동일한 항목이 이미 등록되어 있습니다.")
+            # 3. 파일에 저장
+            if add_menu_cache_entry(new_entry):
+                st.success(f"'{new_entry['vendor']}' 항목을 캐시에 추가했습니다.")
+                
+                # 4. (중요) 폼 리셋: session_state 값들을 수동으로 초기화
+                # 이 로직은 on_click 콜백 내부에서 실행되므로 안전합니다.
+                st.session_state.new_cache_country = ""
+                st.session_state.new_cache_city = ""
+                st.session_state.new_cache_neighborhood = ""
+                st.session_state.new_cache_vendor = ""
+                st.session_state.new_cache_category = "Food"
+                st.session_state.new_cache_price = 0.0
+                st.session_state.new_cache_currency = "USD"
+                st.session_state.new_cache_url = ""
+                st.session_state.cache_city_selector = None # 드롭다운도 리셋
+                
+                # st.rerun()은 on_click 콜백이 끝나면 자동으로 호출되므로 명시적으로 호출할 필요 없음
             else:
-                new_entry = {
-                    "region": region_value,
-                    "country": country_name.strip(),
-                    "city": city_name.strip(),
-                    "neighborhood": neighborhood.strip(),
-                    "hotel_cluster": hotel_cluster.strip(),
-                    "trip_lengths": trip_lengths_selected or DEFAULT_TRIP_LENGTH.copy(),
-                }
-                if substitute_city.strip() and substitute_country.strip():
-                    new_entry["un_dsa_substitute"] = {
-                        "city": substitute_city.strip(),
-                        "country": substitute_country.strip(),
-                    }
-                current_entries.append(new_entry)
-                set_target_city_entries(current_entries)
-                st.success(f"{region_value} - {city_name.strip()} 항목을 추가했습니다.")
-                st.rerun()
-
-    st.subheader("기존 도시 편집/삭제")
-    
-    if current_entries:
-        # 드롭다운(Selectbox)에 on_change 콜백 연결
-        selected_label = st.selectbox(
-            "편집할 도시를 선택하세요", 
-            sorted_labels, 
-            key="edit_city_selector",
-            on_change=_sync_edit_form_from_selection
-        )
-
-        # 페이지 첫 로드 시 폼을 채우기 위한 초기화
-        if "edit_region" not in st.session_state:
-            _sync_edit_form_from_selection()
-
-        # 폼 내부 위젯에서 'value=' 제거하고 'key='만 사용
-        with st.form("edit_target_city_form"):
-            col_e, col_f = st.columns(2)
-            with col_e:
-                region_edit = st.text_input("지역", key="edit_region")
-                city_edit = st.text_input("도시", key="edit_city")
-                neighborhood_edit = st.text_input("세부 지역 (선택)", key="edit_neighborhood")
-            with col_f:
-                country_edit = st.text_input("국가", key="edit_country")
-                hotel_cluster_edit = st.text_input("추천 호텔 클러스터 (선택)", key="edit_hotel")
-
-            trip_lengths_edit = st.multiselect(
-                "출장 기간",
-                TRIP_LENGTH_OPTIONS,
-                key="edit_trip_lengths", 
-            )
-
-            with st.expander("UN-DSA 대체 도시 (선택)"):
-                sub_city_edit = st.text_input("대체 도시", key="edit_sub_city")
-                sub_country_edit = st.text_input("대체 국가", key="edit_sub_country")
-
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                update_btn = st.form_submit_button("변경사항 저장")
-            with col_btn2:
-                delete_btn = st.form_submit_button("삭제", type="secondary")
-
-        # 저장/삭제 로직은 session_state에서 값을 읽어오도록 수정
-        if update_btn:
-            if (not st.session_state.edit_region.strip() or 
-                not st.session_state.edit_city.strip() or 
-                not st.session_state.edit_country.strip()):
-                st.error("지역, 국가, 도시는 필수로 입력해 주세요.")
-            else:
-                selected_idx = options[st.session_state.edit_city_selector]
-                current_entries[selected_idx] = {
-                    "region": st.session_state.edit_region.strip(),
-                    "country": st.session_state.edit_country.strip(),
-                    "city": st.session_state.edit_city.strip(),
-                    "neighborhood": st.session_state.edit_neighborhood.strip(),
-                    "hotel_cluster": st.session_state.edit_hotel.strip(),
-                    "trip_lengths": st.session_state.edit_trip_lengths or DEFAULT_TRIP_LENGTH.copy(),
-                }
-                if st.session_state.edit_sub_city.strip() and st.session_state.edit_sub_country.strip():
-                    current_entries[selected_idx]["un_dsa_substitute"] = {
-                        "city": st.session_state.edit_sub_city.strip(),
-                        "country": st.session_state.edit_sub_country.strip(),
-                    }
-                else:
-                    current_entries[selected_idx].pop("un_dsa_substitute", None)
-
-                set_target_city_entries(current_entries)
-                st.success("수정을 완료했습니다.")
-                st.rerun()
-        
-        if delete_btn:
-            selected_idx = options[st.session_state.edit_city_selector]
-            del current_entries[selected_idx]
-            set_target_city_entries(current_entries)
-            st.warning("선택한 항목을 삭제했습니다.")
-            st.rerun()
-    else:
-        st.info("등록된 목표 도시가 없어 편집할 항목이 없습니다.")
-
-    # --- [신규 3] '데이터 캐시 관리' UI 추가 ---
-    st.divider()
-    st.header("데이터 캐시 관리 (Menu Cache)")
-
-    if not MENU_CACHE_ENABLED:
-        st.error("`data_sources/menu_cache.py` 파일 로드에 실패하여 이 기능을 사용할 수 없습니다.")
-    else:
-        st.info("AI가 도시 물가 추정 시 참고할 실제 메뉴/가격 데이터를 관리합니다. (AI 분석 정확도 향상)")
-
-        # 1. 새 캐시 항목 추가 폼
-        st.subheader("신규 캐시 항목 추가")
-        
-        st.selectbox(
-            "도시 선택 (자동 채우기):", 
-            sorted_labels,  # 탭 상단에서 정의한 변수
-            key="cache_city_selector",
-            on_change=_sync_cache_form_from_selection, # 새로 만든 콜백
-            index=None,
-            placeholder="도시를 선택하면 국가, 도시, 세부 지역이 자동 입력됩니다."
-        )
-
-        # 페이지 첫 로드 시 캐시 폼 초기화
-        if "new_cache_country" not in st.session_state:
-            _sync_cache_form_from_selection() # 빈 값으로 초기화
-        
-        # --- [v19.3 핫픽스] clear_on_submit=False, on_click 콜백 사용 ---
-        with st.form("add_menu_cache_form"): # clear_on_submit 제거
-            st.write("AI 분석에 사용할 참고 가격 정보를 입력합니다. (예: 레스토랑 메뉴, 택시비 고지 등)")
-            c1, c2 = st.columns(2)
-            with c1:
-                new_cache_country = st.text_input("국가 (Country)", key="new_cache_country", help="예: Philippines")
-                new_cache_city = st.text_input("도시 (City)", key="new_cache_city", help="예: Manila")
-                new_cache_neighborhood = st.text_input("세부 지역 (Neighborhood) (선택)", key="new_cache_neighborhood", help="예: Makati (비워두면 도시 전체에 적용)")
-                new_cache_vendor = st.text_input("장소/상품명 (Vendor)", key="new_cache_vendor", help="예: Jollibee (C3, Ayala Ave)")
-            with c2:
-                new_cache_category = st.selectbox("카테고리 (Category)", ["Food", "Transport", "Misc"], key="new_cache_category")
-                new_cache_price = st.number_input("가격 (Price)", min_value=0.0, step=0.01, key="new_cache_price")
-                new_cache_currency = st.text_input("통화 (Currency)", value="USD", key="new_cache_currency", help="예: PHP, USD")
-                new_cache_url = st.text_input("출처 URL (Source URL) (선택)", key="new_cache_url")
-            
-            # [v19.3] on_click 콜백으로 저장/초기화 로직 실행
-            add_cache_submitted = st.form_submit_button(
-                "신규 캐시 항목 저장",
-                on_click=handle_cache_submit # <-- 핵심 수정
-            )
+                st.error("캐시 항목 추가에 실패했습니다.")
         # --- [v19.3 핫픽스] 끝 ---
 
-        # 2. 기존 캐시 항목 조회 및 삭제
-        st.subheader("기존 캐시 항목 조회 및 삭제")
-        all_cache_data = load_all_cache() # menu_cache.py의 함수
-        
-        if not all_cache_data:
-            st.info("현재 저장된 캐시 데이터가 없습니다.")
-        else:
-            df_cache = pd.DataFrame(all_cache_data)
-            # [v19.3] 경고 수정
-            st.dataframe(df_cache[[
-                "country", "city", "neighborhood", "vendor", 
-                "category", "price", "currency", "last_updated", "url"
-            ]], width='stretch')
+        st.subheader("직원용 탭 노출")
+        visibility_toggle = st.toggle("직원용 탭 노출", value=employee_tab_visible, key="employee_tab_visibility_toggle") # Key 이름 변경
+        if visibility_toggle != stored_employee_tab_visible:
+            updated_settings = dict(ui_settings)
+            updated_settings["show_employee_tab"] = visibility_toggle
+            updated_settings["employee_sections"] = employee_sections_visibility
+            save_ui_settings(updated_settings)
+            ui_settings = updated_settings
+            st.session_state.employee_tab_visibility = visibility_toggle # 세션 상태에도 반영
+            st.success("직원용 탭 노출 상태가 업데이트되었습니다. (새로고침 시 적용)")
+            time.sleep(1) # 유저가 메시지를 읽을 시간을 줌
+            st.rerun()
 
-            # 삭제 기능
-            st.markdown("---")
-            st.write("##### 캐시 항목 삭제")
-            
-            delete_options_map = {
-                f"[{entry.get('last_updated', '...')} / {entry.get('city', '...')}] {entry.get('vendor', '...')} ({entry.get('price', '...')})": idx
-                for idx, entry in enumerate(reversed(all_cache_data))
-            }
-            delete_labels = list(delete_options_map.keys())
-            
-            label_to_delete = st.selectbox("삭제할 캐시 항목을 선택하세요:", delete_labels, index=None, placeholder="삭제할 항목 선택...")
-            
-            if label_to_delete and st.button(f"'{label_to_delete}' 항목 삭제", type="primary"):
-                original_list_index = (len(all_cache_data) - 1) - delete_options_map[label_to_delete]
-                
-                entry_to_delete = all_cache_data.pop(original_list_index)
-                
-                if save_cached_menu_prices(all_cache_data):
-                    st.success(f"'{entry_to_delete.get('vendor')}' 항목을 삭제했습니다.")
-                    st.rerun()
+        st.subheader("직원 화면 노출 설정")
+        section_toggle_values: Dict[str, bool] = {}
+        for section_key, label in EMPLOYEE_SECTION_LABELS:
+            current_value = employee_sections_visibility.get(section_key, EMPLOYEE_SECTION_DEFAULTS.get(section_key, True))
+            section_toggle_values[section_key] = st.toggle(
+                label,
+                value=current_value,
+                key=f"employee_section_toggle_{section_key}",
+            )
+        if section_toggle_values != employee_sections_visibility:
+            updated_settings = dict(ui_settings)
+            updated_settings["employee_sections"] = section_toggle_values
+            save_ui_settings(updated_settings)
+            ui_settings["employee_sections"] = section_toggle_values
+            st.session_state.employee_sections_visibility = section_toggle_values
+            employee_sections_visibility = section_toggle_values
+            st.success("직원 화면 노출 설정이 업데이트되었습니다.")
+            time.sleep(1)
+            st.rerun()
+
+        st.divider()
+        st.subheader("비중 설정 (기본값)")
+        st.info("이제 이 설정은 '동적 가중치' 로직의 기본값으로 사용됩니다. AI 응답이 불안정하면 자동으로 AI 비중이 낮아집니다.")
+        current_weights = get_weight_config()
+        st.caption(f"Current Admin Default -> UN {current_weights.get('un_weight', 0.5):.0%} / AI {current_weights.get('ai_weight', 0.5):.0%}")
+        with st.form("weight_config_form"):
+            un_weight_input = st.slider("UN-DSA weight", min_value=0.0, max_value=1.0, value=float(current_weights.get("un_weight", 0.5)), step=0.05, format="%.2f")
+            ai_weight_preview = max(0.0, 1.0 - un_weight_input)
+            st.write(f"AI market estimate weight: **{ai_weight_preview:.2f}**")
+            st.caption("Weights are normalised to sum to 1.0 when saved.")
+            weight_submit = st.form_submit_button("Save weights")
+        if weight_submit:
+            updated = update_weight_config(un_weight_input, ai_weight_preview)
+            st.success(f"Weights saved (UN {updated['un_weight']:.2f} / AI {updated['ai_weight']:.2f})")
+            st.rerun()
+
+        st.divider()
+        st.header("목표 도시 관리 (target_cities_config.json)")
+        entries_df = pd.DataFrame(get_target_city_entries())
+        if not entries_df.empty:
+            entries_display = entries_df.copy()
+            # trip_lengths를 보기 쉽게 문자열로 변환
+            entries_display["trip_lengths"] = entries_display["trip_lengths"].apply(lambda x: ', '.join(x) if isinstance(x, list) else DEFAULT_TRIP_LENGTH[0])
+            st.dataframe(entries_display[["region", "country", "city", "neighborhood", "hotel_cluster", "trip_lengths"]], width='stretch') # [v19.3] 경고 수정
+        else:
+            st.info("등록된 목표 도시가 없습니다. 아래에서 새 항목을 추가해 주세요.")
+
+        # --- [신규 2] 도시 좌표 자동 완성 기능 (새로 추가) ---
+        st.divider()
+        st.subheader("도시 좌표 관리")
+        
+        if st.button(
+            "모든 도시 좌표(Lat/Lon) 자동 완성",
+            help="target_cities_config.json의 모든 도시를 대상으로 좌표가 없는 도시에 대해 geopy를 호출해 좌표를 자동 저장합니다.",
+        ):
+            success_count, fail_count = auto_fill_all_city_coordinates()
+
+            if success_count == 0 and fail_count == 0:
+                st.success("모든 도시에 이미 좌표가 설정되어 있습니다. (업데이트 불필요)")
+            else:
+                st.success(f"좌표 자동 완성 완료! (성공: {success_count} / 실패: {fail_count})")
+            st.rerun()
+
+        # --- [신규 2] 끝 ---
+
+
+        existing_regions = sorted({entry["region"] for entry in get_target_city_entries()})
+        st.subheader("신규 도시 추가")
+        with st.form("add_target_city_form", clear_on_submit=True):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                region_options = existing_regions + ["기타 (직접 입력)"]
+                region_choice = st.selectbox("지역", region_options, key="add_region_choice")
+                new_region = ""
+                if region_choice == "기타 (직접 입력)":
+                    new_region = st.text_input("새 지역 이름", key="add_region_text")
+            with col_b:
+                trip_lengths_selected = st.multiselect("출장 기간", TRIP_LENGTH_OPTIONS, default=DEFAULT_TRIP_LENGTH, key="add_trip_lengths")
+
+            col_c, col_d = st.columns(2)
+            with col_c:
+                city_name = st.text_input("도시", key="add_city")
+                neighborhood = st.text_input("세부 지역 (선택)", key="add_neighborhood")
+            with col_d:
+                country_name = st.text_input("국가", key="add_country")
+                hotel_cluster = st.text_input("추천 호텔 클러스터 (선택)", key="add_hotel_cluster")
+
+            with st.expander("UN-DSA 대체 도시 (선택)"):
+                substitute_city = st.text_input("대체 도시", key="add_sub_city")
+                substitute_country = st.text_input("대체 국가", key="add_sub_country")
+
+            add_submitted = st.form_submit_button("추가")
+
+        if add_submitted:
+            region_value = new_region.strip() if region_choice == "기타 (직접 입력)" else region_choice
+            if not region_value or not city_name.strip() or not country_name.strip():
+                st.error("지역, 국가, 도시는 필수로 입력해 주세요.")
+            else:
+                current_entries = get_target_city_entries()
+                canonical_key = (region_value.lower(), country_name.strip().lower(), city_name.strip().lower())
+                duplicate_exists = any(
+                    (entry.get("region", "").lower(), entry.get("country", "").lower(), entry.get("city", "").lower()) == canonical_key
+                    for entry in current_entries
+                )
+                if duplicate_exists:
+                    st.warning("동일한 항목이 이미 등록되어 있습니다.")
                 else:
-                    st.error("캐시 삭제에 실패했습니다.")
+                    new_entry = {
+                        "region": region_value,
+                        "country": country_name.strip(),
+                        "city": city_name.strip(),
+                        "neighborhood": neighborhood.strip(),
+                        "hotel_cluster": hotel_cluster.strip(),
+                        "trip_lengths": trip_lengths_selected or DEFAULT_TRIP_LENGTH.copy(),
+                    }
+                    if substitute_city.strip() and substitute_country.strip():
+                        new_entry["un_dsa_substitute"] = {
+                            "city": substitute_city.strip(),
+                            "country": substitute_country.strip(),
+                        }
+                    current_entries.append(new_entry)
+                    set_target_city_entries(current_entries)
+                    st.success(f"{region_value} - {city_name.strip()} 항목을 추가했습니다.")
+                    st.rerun()
+
+        st.subheader("기존 도시 편집/삭제")
+        
+        if current_entries:
+            # 드롭다운(Selectbox)에 on_change 콜백 연결
+            selected_label = st.selectbox(
+                "편집할 도시를 선택하세요", 
+                sorted_labels, 
+                key="edit_city_selector",
+                on_change=_sync_edit_form_from_selection
+            )
+
+            # 페이지 첫 로드 시 폼을 채우기 위한 초기화
+            if "edit_region" not in st.session_state:
+                _sync_edit_form_from_selection()
+
+            # 폼 내부 위젯에서 'value=' 제거하고 'key='만 사용
+            with st.form("edit_target_city_form"):
+                col_e, col_f = st.columns(2)
+                with col_e:
+                    region_edit = st.text_input("지역", key="edit_region")
+                    city_edit = st.text_input("도시", key="edit_city")
+                    neighborhood_edit = st.text_input("세부 지역 (선택)", key="edit_neighborhood")
+                with col_f:
+                    country_edit = st.text_input("국가", key="edit_country")
+                    hotel_cluster_edit = st.text_input("추천 호텔 클러스터 (선택)", key="edit_hotel")
+
+                trip_lengths_edit = st.multiselect(
+                    "출장 기간",
+                    TRIP_LENGTH_OPTIONS,
+                    key="edit_trip_lengths", 
+                )
+
+                with st.expander("UN-DSA 대체 도시 (선택)"):
+                    sub_city_edit = st.text_input("대체 도시", key="edit_sub_city")
+                    sub_country_edit = st.text_input("대체 국가", key="edit_sub_country")
+
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    update_btn = st.form_submit_button("변경사항 저장")
+                with col_btn2:
+                    delete_btn = st.form_submit_button("삭제", type="secondary")
+
+            # 저장/삭제 로직은 session_state에서 값을 읽어오도록 수정
+            if update_btn:
+                if (not st.session_state.edit_region.strip() or 
+                    not st.session_state.edit_city.strip() or 
+                    not st.session_state.edit_country.strip()):
+                    st.error("지역, 국가, 도시는 필수로 입력해 주세요.")
+                else:
+                    selected_idx = options[st.session_state.edit_city_selector]
+                    current_entries[selected_idx] = {
+                        "region": st.session_state.edit_region.strip(),
+                        "country": st.session_state.edit_country.strip(),
+                        "city": st.session_state.edit_city.strip(),
+                        "neighborhood": st.session_state.edit_neighborhood.strip(),
+                        "hotel_cluster": st.session_state.edit_hotel.strip(),
+                        "trip_lengths": st.session_state.edit_trip_lengths or DEFAULT_TRIP_LENGTH.copy(),
+                    }
+                    if st.session_state.edit_sub_city.strip() and st.session_state.edit_sub_country.strip():
+                        current_entries[selected_idx]["un_dsa_substitute"] = {
+                            "city": st.session_state.edit_sub_city.strip(),
+                            "country": st.session_state.edit_sub_country.strip(),
+                        }
+                    else:
+                        current_entries[selected_idx].pop("un_dsa_substitute", None)
+
+                    set_target_city_entries(current_entries)
+                    st.success("수정을 완료했습니다.")
+                    st.rerun()
+            
+            if delete_btn:
+                selected_idx = options[st.session_state.edit_city_selector]
+                del current_entries[selected_idx]
+                set_target_city_entries(current_entries)
+                st.warning("선택한 항목을 삭제했습니다.")
+                st.rerun()
+        else:
+            st.info("등록된 목표 도시가 없어 편집할 항목이 없습니다.")
+
+        # --- [신규 3] '데이터 캐시 관리' UI 추가 ---
+        st.divider()
+        st.header("데이터 캐시 관리 (Menu Cache)")
+
+        if not MENU_CACHE_ENABLED:
+            st.error("`data_sources/menu_cache.py` 파일 로드에 실패하여 이 기능을 사용할 수 없습니다.")
+        else:
+            st.info("AI가 도시 물가 추정 시 참고할 실제 메뉴/가격 데이터를 관리합니다. (AI 분석 정확도 향상)")
+
+            # 1. 새 캐시 항목 추가 폼
+            st.subheader("신규 캐시 항목 추가")
+            
+            st.selectbox(
+                "도시 선택 (자동 채우기):", 
+                sorted_labels,  # 탭 상단에서 정의한 변수
+                key="cache_city_selector",
+                on_change=_sync_cache_form_from_selection, # 새로 만든 콜백
+                index=None,
+                placeholder="도시를 선택하면 국가, 도시, 세부 지역이 자동 입력됩니다."
+            )
+
+            # 페이지 첫 로드 시 캐시 폼 초기화
+            if "new_cache_country" not in st.session_state:
+                _sync_cache_form_from_selection() # 빈 값으로 초기화
+            
+            # --- [v19.3 핫픽스] clear_on_submit=False, on_click 콜백 사용 ---
+            with st.form("add_menu_cache_form"): # clear_on_submit 제거
+                st.write("AI 분석에 사용할 참고 가격 정보를 입력합니다. (예: 레스토랑 메뉴, 택시비 고지 등)")
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_cache_country = st.text_input("국가 (Country)", key="new_cache_country", help="예: Philippines")
+                    new_cache_city = st.text_input("도시 (City)", key="new_cache_city", help="예: Manila")
+                    new_cache_neighborhood = st.text_input("세부 지역 (Neighborhood) (선택)", key="new_cache_neighborhood", help="예: Makati (비워두면 도시 전체에 적용)")
+                    new_cache_vendor = st.text_input("장소/상품명 (Vendor)", key="new_cache_vendor", help="예: Jollibee (C3, Ayala Ave)")
+                with c2:
+                    new_cache_category = st.selectbox("카테고리 (Category)", ["Food", "Transport", "Misc"], key="new_cache_category")
+                    new_cache_price = st.number_input("가격 (Price)", min_value=0.0, step=0.01, key="new_cache_price")
+                    new_cache_currency = st.text_input("통화 (Currency)", value="USD", key="new_cache_currency", help="예: PHP, USD")
+                    new_cache_url = st.text_input("출처 URL (Source URL) (선택)", key="new_cache_url")
+                
+                # [v19.3] on_click 콜백으로 저장/초기화 로직 실행
+                add_cache_submitted = st.form_submit_button(
+                    "신규 캐시 항목 저장",
+                    on_click=handle_cache_submit # <-- 핵심 수정
+                )
+            # --- [v19.3 핫픽스] 끝 ---
+
+            # 2. 기존 캐시 항목 조회 및 삭제
+            st.subheader("기존 캐시 항목 조회 및 삭제")
+            all_cache_data = load_all_cache() # menu_cache.py의 함수
+            
+            if not all_cache_data:
+                st.info("현재 저장된 캐시 데이터가 없습니다.")
+            else:
+                df_cache = pd.DataFrame(all_cache_data)
+                # [v19.3] 경고 수정
+                st.dataframe(df_cache[[
+                    "country", "city", "neighborhood", "vendor", 
+                    "category", "price", "currency", "last_updated", "url"
+                ]], width='stretch')
+
+                # 삭제 기능
+                st.markdown("---")
+                st.write("##### 캐시 항목 삭제")
+                
+                delete_options_map = {
+                    f"[{entry.get('last_updated', '...')} / {entry.get('city', '...')}] {entry.get('vendor', '...')} ({entry.get('price', '...')})": idx
+                    for idx, entry in enumerate(reversed(all_cache_data))
+                }
+                delete_labels = list(delete_options_map.keys())
+                
+                label_to_delete = st.selectbox("삭제할 캐시 항목을 선택하세요:", delete_labels, index=None, placeholder="삭제할 항목 선택...")
+                
+                if label_to_delete and st.button(f"'{label_to_delete}' 항목 삭제", type="primary"):
+                    original_list_index = (len(all_cache_data) - 1) - delete_options_map[label_to_delete]
+                    
+                    entry_to_delete = all_cache_data.pop(original_list_index)
+                    
+                    if save_cached_menu_prices(all_cache_data):
+                        st.success(f"'{entry_to_delete.get('vendor')}' 항목을 삭제했습니다.")
+                        st.rerun()
+                    else:
+                        st.error("캐시 삭제에 실패했습니다.")
     
     # --- [신규 3] UI 끝 ---
     
