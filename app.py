@@ -549,6 +549,7 @@ def auto_fill_all_city_coordinates() -> tuple[int, int]:
     """
     target_cities 중 lat/lon 없는 도시들 좌표를 geopy 로 자동 채우고
     DB + session_state 에 저장한 뒤 (성공 개수, 실패 개수)를 반환.
+    한국(Seoul/Busan/Incheon/Jeju Island) 등은 별칭 및 수동 좌표로 보완.
     """
     try:
         geolocator = Nominatim(user_agent=f"aicp_app_{random.randint(1000,9999)}")
@@ -571,26 +572,48 @@ def auto_fill_all_city_coordinates() -> tuple[int, int]:
         for i, entry in enumerate(entries_to_update):
             city = entry["city"]
             country = entry["country"]
-            query = f"{city}, {country}"
+
+            # 1) country 별칭 적용 (예: "Korea, Republic of" → "South Korea")
+            country_for_query = GEOCODING_COUNTRY_ALIASES.get(country, country)
+
+            # 2) (city, country) 조합별 쿼리 override
+            key = (city.lower(), country_for_query.lower())
+            if key in GEOCODING_CITY_QUERY_OVERRIDES:
+                query = GEOCODING_CITY_QUERY_OVERRIDES[key]
+            else:
+                query = f"{city}, {country_for_query}"
 
             try:
                 location = geolocator.geocode(query, timeout=5)
                 time.sleep(1)  # Nominatim rate limit
 
                 if location:
-                    entry["lat"] = location.latitude
-                    entry["lon"] = location.longitude
+                    entry["lat"] = float(location.latitude)
+                    entry["lon"] = float(location.longitude)
                     st.toast(
                         f"✅ 성공: {query} ({location.latitude:.4f}, {location.longitude:.4f})",
                         icon="🌍",
                     )
                     success_count += 1
                 else:
-                    st.toast(
-                        f"⚠️ 실패: {query}의 좌표를 찾을 수 없습니다.",
-                        icon="❓",
-                    )
-                    fail_count += 1
+                    # 3) Nominatim 에서 못 찾으면 수동 좌표 fallback 시도
+                    manual = MANUAL_COORDS.get((city, country))
+                    if manual:
+                        lat, lon = manual
+                        entry["lat"] = float(lat)
+                        entry["lon"] = float(lon)
+                        st.toast(
+                            f"✅ 수동 좌표 사용: {city}, {country} ({lat:.4f}, {lon:.4f})",
+                            icon="📌",
+                        )
+                        success_count += 1
+                    else:
+                        st.toast(
+                            f"⚠️ 실패: {query}의 좌표를 찾을 수 없습니다.",
+                            icon="❓",
+                        )
+                        fail_count += 1
+
             except (GeocoderTimedOut, GeocoderUnavailable):
                 st.toast(
                     f"❌ 오류: {query} 요청 시간 초과. 잠시 후 다시 시도하세요.",
@@ -612,6 +635,7 @@ def auto_fill_all_city_coordinates() -> tuple[int, int]:
 
 
 
+
 def get_target_cities_grouped(entries: Optional[List[Dict[str, Any]]] = None) -> Dict[str, List[Dict[str, Any]]]:
     entries = entries or get_target_city_entries()
     grouped: Dict[str, List[Dict[str, Any]]] = {}
@@ -623,6 +647,31 @@ def get_target_cities_grouped(entries: Optional[List[Dict[str, Any]]] = None) ->
 def get_all_target_cities(entries: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     entries = entries or get_target_city_entries()
     return [normalize_target_entry(entry) for entry in entries]
+
+
+# --- Geocoding 전용 별칭 / 수동 좌표 ---
+
+GEOCODING_COUNTRY_ALIASES = {
+    # UN 표기 → 실제 지오코딩용 표기
+    "Korea, Republic of": "South Korea",
+}
+
+# 특정 (city, country) 조합에 대해, Nominatim에 던질 쿼리를 강제로 지정
+GEOCODING_CITY_QUERY_OVERRIDES = {
+    ("seoul", "south korea"): "Seoul, South Korea",
+    ("busan", "south korea"): "Busan, South Korea",
+    ("incheon", "south korea"): "Incheon, South Korea",
+    ("jeju island", "south korea"): "Jeju-do, South Korea",  # 제주
+}
+
+# 그래도 못 찾았을 때 사용할 수동 좌표 (마지막 안전망)
+MANUAL_COORDS = {
+    ("Seoul", "Korea, Republic of"): (37.5665, 126.9780),
+    ("Busan", "Korea, Republic of"): (35.1796, 129.0756),
+    ("Incheon", "Korea, Republic of"): (37.4563, 126.7052),
+    ("Jeju Island", "Korea, Republic of"): (33.4996, 126.5312),
+}
+
 
 # 도시 이름 별칭 매핑
 CITY_ALIASES = {
