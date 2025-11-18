@@ -1286,7 +1286,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"  # 👈 사이드바 기본 접힘
 )
-st.title("AICP: NSUS GROUP Per Diem Calculation & Inquiry System")
+st.title("NSUS GROUP Per Diem Calculation & Inquiry System")
 
 if 'latest_analysis_result' not in st.session_state:
     st.session_state.latest_analysis_result = None
