@@ -1437,15 +1437,33 @@ if dashboard_tab is not None:
                         suffixes=("_report", "_config")
                     )
 
-                    # 2. 지도용 데이터: target_cities 의 lat/lon 사용
-                    if not {'lat', 'lon', 'final_allowance'}.issubset(df_merged.columns):
+                    # 2. 지도용 데이터: lat/lon 컬럼 자동 탐지 (report / config 둘 다 대응)
+                    lat_col = None
+                    lon_col = None
+
+                    if "lat_config" in df_merged.columns and "lon_config" in df_merged.columns:
+                        # target_cities 쪽 좌표를 우선 사용
+                        lat_col, lon_col = "lat_config", "lon_config"
+                    elif "lat_report" in df_merged.columns and "lon_report" in df_merged.columns:
+                        # 예전 리포트(JSON)만 좌표를 가진 경우
+                        lat_col, lon_col = "lat_report", "lon_report"
+                    elif "lat" in df_merged.columns and "lon" in df_merged.columns:
+                        # 중복이 없을 때 (둘 중 한쪽만 lat/lon 보유)
+                        lat_col, lon_col = "lat", "lon"
+
+                    # final_allowance 와 lat/lon 이 모두 있어야 지도 표시 가능
+                    if lat_col is None or lon_col is None or "final_allowance" not in df_merged.columns:
                         map_data = pd.DataFrame(columns=["city", "country", "lat", "lon", "final_allowance"])
                     else:
-                        map_data = df_merged[["city", "country", "lat", "lon", "final_allowance"]].copy()
-                        map_data['lat'] = pd.to_numeric(map_data['lat'], errors='coerce')
-                        map_data['lon'] = pd.to_numeric(map_data['lon'], errors='coerce')
-                        map_data['final_allowance'] = pd.to_numeric(map_data['final_allowance'], errors='coerce')
-                        map_data.dropna(subset=['lat', 'lon', 'final_allowance'], inplace=True)
+                        map_data = df_merged.rename(columns={lat_col: "lat", lon_col: "lon"})[
+                            ["city", "country", "lat", "lon", "final_allowance"]
+                        ].copy()
+
+                        map_data["lat"] = pd.to_numeric(map_data["lat"], errors="coerce")
+                        map_data["lon"] = pd.to_numeric(map_data["lon"], errors="coerce")
+                        map_data["final_allowance"] = pd.to_numeric(map_data["final_allowance"], errors="coerce")
+                        map_data.dropna(subset=["lat", "lon", "final_allowance"], inplace=True)
+
 
                     if map_data.empty:
                         st.warning(
