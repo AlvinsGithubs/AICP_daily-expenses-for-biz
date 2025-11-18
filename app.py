@@ -1806,11 +1806,12 @@ if employee_tab is not None:
                         un_display = None
                         if un_data.get('status') == 'ok' and isinstance(un_data.get('per_diem_excl_lodging'), (int, float)):
                             un_base = un_data['per_diem_excl_lodging']
-                            # 🔧 직급 비율 + 롱텀/숏텀 multiplier 모두 반영
+                            # 🔧 레벨 + 롱텀/숏텀 multiplier 모두 반영
                             un_display = round(un_base * trip_multiplier * level_ratio)
 
                         ai_display = round(ai_avg * trip_multiplier * level_ratio) if ai_avg is not None else None
                         weighted_display = round(final_allowance * trip_multiplier * level_ratio) if final_allowance is not None else None
+
 
 
                         first_row_keys = []
@@ -1827,34 +1828,67 @@ if employee_tab is not None:
                                 with col:
                                     if key == "un":
                                         if un_base is not None:
-                                            base_short = round(un_base)
-                                            base_long = round(un_base * trip_multiplier)
-                                            un_caption = f"Base (city): Short-term $ {base_short:,}"
+                                            # 🔧 레벨 기준 Short / Long 값
+                                            base_short_level = round(un_base * level_ratio)
+                                            base_long_level = round(un_base * trip_multiplier * level_ratio)
                                             if trip_term == "Long-term":
-                                                un_caption = f"Base (city): Short-term $ {base_short:,} → Long-term $ {base_long:,}"
+                                                un_caption = f"Base (level-adjusted): Short-term $ {base_short_level:,} → Long-term $ {base_long_level:,}"
+                                            else:
+                                                un_caption = f"Base (level-adjusted): Short-term $ {base_short_level:,}"
                                         else:
                                             un_caption = city_data.get("notes", "")
 
                                         render_stat_card(
                                             "UN-DSA Basis",
-                                            f"$ {un_display:,}" if un_display is not None else "N/A",  # 🔧 여기 값은 직급 반영된 금액
+                                            f"$ {un_display:,}" if un_display is not None else "N/A",
                                             un_caption,
                                             "secondary"
                                         )
 
                                     
                                     elif key == "ai":
-                                        ai_caption_base = f"Short-term base $ {ai_avg:,}" if ai_avg is not None else ""
-                                        if trip_term == "Long-term" and ai_avg is not None:
-                                            ai_caption_base = f"Short-term $ {ai_avg:,} → Long-term $ {ai_display:,}"
-                                        ai_full_caption = f"{ai_notes} | {ai_caption_base}".strip(" | ")
-                                        render_stat_card("AI Market Estimate (Seasonal Adj.)", f"$ {ai_display:,}" if ai_display is not None else "N/A", ai_full_caption, "secondary")
+                                        if ai_avg is not None:
+                                            # ai_avg 는 이미 season-adjusted (도시 기준)
+                                            ai_short_level = round(ai_avg * level_ratio)
+                                            ai_long_level = round(ai_avg * trip_multiplier * level_ratio)
+                                            if trip_term == "Long-term":
+                                                ai_level_caption = f"Short-term $ {ai_short_level:,} → Long-term $ {ai_long_level:,}"
+                                            else:
+                                                ai_level_caption = f"Short-term $ {ai_short_level:,}"
+                                        else:
+                                            ai_level_caption = ""
+
+                                        # 기존 성공 횟수 / 시즌 정보는 그대로 유지
+                                        ai_full_caption = " | ".join(
+                                            part for part in [ai_notes, ai_level_caption] if part
+                                        )
+
+                                        render_stat_card(
+                                            "AI Market Estimate (Seasonal Adj.)",
+                                            f"$ {ai_display:,}" if ai_display is not None else "N/A",
+                                            ai_full_caption,
+                                            "secondary"
+                                        )
+
                                     
-                                    else: # key == "weighted"
-                                        weighted_caption = weight_caption
-                                        if trip_term == "Long-term" and final_allowance is not None:
-                                            weighted_caption = f"Short-term $ {final_allowance:,} → Long-term $ {weighted_display:,} | {weight_caption}"
-                                        render_stat_card("Weighted Average Result", f"$ {weighted_display:,}" if weighted_display is not None else "N/A", weighted_caption, "secondary")
+                                    else:  # key == "weighted"
+                                        if final_allowance is not None:
+                                            weighted_short_level = round(final_allowance * level_ratio)
+                                            weighted_long_level = round(final_allowance * trip_multiplier * level_ratio)
+                                            if trip_term == "Long-term":
+                                                amount_part = f"Short-term $ {weighted_short_level:,} → Long-term $ {weighted_long_level:,}"
+                                            else:
+                                                amount_part = f"Short-term $ {weighted_short_level:,}"
+                                            weighted_caption = f"{amount_part} | {weight_caption}"
+                                        else:
+                                            weighted_caption = weight_caption
+
+                                        render_stat_card(
+                                            "Weighted Average Result",
+                                            f"$ {weighted_display:,}" if weighted_display is not None else "N/A",
+                                            weighted_caption,
+                                            "secondary"
+                                        )
 
                         # [New 2] Detailed cost breakdown (merged with show_ai_market_detail logic)
                         if employee_sections_visibility["show_ai_market_detail"]:
