@@ -1628,7 +1628,7 @@ if dashboard_tab is not None:
                         st.warning("No 'final_allowance' data to display the chart.")
 
 
-
+if employee_tab is not None:
     with employee_tab:
         st.header("Per Diem Inquiry by City")
         history_files = get_history_files()
@@ -1734,45 +1734,44 @@ if dashboard_tab is not None:
 
                 if run_search:
                     # 🔒 필수 입력값 모두 체크
-                    if search_clicked:
-                        if not (sel_country and sel_city and sel_level and trip_start and trip_end):
-                            st.error("Please select all of the above fields.")
+                    if not (sel_country and sel_city and sel_level and trip_start and trip_end):
+                        st.error("Please select all of the above fields.")
+                    else:
+                        if isinstance(trip_start, datetime):
+                            trip_start = trip_start.date()
+                        if isinstance(trip_end, datetime):
+                            trip_end = trip_end.date()
+
+                        trip_valid = trip_end >= trip_start
+                        if not trip_valid:
+                            st.error("The end date must be on or after the start date.")
+                            trip_days = 0
+                            trip_term = "Short-term"
+                            trip_multiplier = SHORT_TERM_MULTIPLIER
+                            trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
                         else:
-                            if isinstance(trip_start, datetime):
-                                trip_start = trip_start.date()
-                            if isinstance(trip_end, datetime):
-                                trip_end = trip_end.date()
+                            trip_days = (trip_end - trip_start).days + 1
+                            trip_term, trip_multiplier = classify_trip_duration(trip_days)
+                            trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
+                            st.caption(f"Auto-classified trip type: {trip_term_label} · {trip_days}-day trip")
 
-                            trip_valid = trip_end >= trip_start
-                            if not trip_valid:
-                                st.error("The end date must be on or after the start date.")
-                                trip_days = 0
-                                trip_term = "Short-term"
-                                trip_multiplier = SHORT_TERM_MULTIPLIER
-                                trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
-                            else:
-                                trip_days = (trip_end - trip_start).days + 1
-                                trip_term, trip_multiplier = classify_trip_duration(trip_days)
-                                trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
-                                st.caption(f"Auto-classified trip type: {trip_term_label} · {trip_days}-day trip")
+                        # 🚩 City 필터링도 run_search 안에서 처리
+                        if sel_city:
+                            filtered_trip_cities = []
+                            for entry in target_entries:
+                                if entry['country'] != sel_country or entry['city'] != sel_city:
+                                    continue
+                                if trip_valid and trip_term not in entry.get('trip_lengths', TRIP_LENGTH_OPTIONS):
+                                    continue
+                                filtered_trip_cities.append(entry['city'])
+                            if trip_valid and not filtered_trip_cities:
+                                st.warning("No city data available for this period. Adjust the trip type to 'Short-term' or check city settings.")
+                                sel_city = None
 
-                            # 🚩 City 필터링도 run_search 안에서 처리
-                            if sel_city:
-                                filtered_trip_cities = []
-                                for entry in target_entries:
-                                    if entry['country'] != sel_country or entry['city'] != sel_city:
-                                        continue
-                                    if trip_valid and trip_term not in entry.get('trip_lengths', TRIP_LENGTH_OPTIONS):
-                                        continue
-                                    filtered_trip_cities.append(entry['city'])
-                                if trip_valid and not filtered_trip_cities:
-                                    st.warning("No city data available for this period. Adjust the trip type to 'Short-term' or check city settings.")
-                                    sel_city = None
-
-                            if trip_valid and sel_city and sel_level and trip_days is not None:
-                                # 🔽 이 아래는 기존 로직 그대로 (요약 카드 + Basis of Calculation 등)
-                                city_data = cities_df[cities_df['city'] == sel_city].iloc[0].to_dict()
-                                final_allowance = city_data.get('final_allowance')
+                        if trip_valid and sel_city and sel_level and trip_days is not None:
+                            # 🔽 이 아래는 기존 로직 그대로 (요약 카드 + Basis of Calculation 등)
+                            city_data = cities_df[cities_df['city'] == sel_city].iloc[0].to_dict()
+                            final_allowance = city_data.get('final_allowance')
                             st.subheader(f"{sel_country} - {sel_city} Results")
 
                             level_ratio = JOB_LEVEL_RATIOS.get(sel_level, 1.0)  # 🔧 직급 비율을 여기서 미리 계산
