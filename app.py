@@ -1703,7 +1703,7 @@ if employee_tab is not None:
                     )
 
 
-                )
+
 
                 # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
                 msg_col, btn_col = st.columns([3, 1])
