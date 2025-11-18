@@ -1628,7 +1628,7 @@ if dashboard_tab is not None:
                         st.warning("No 'final_allowance' data to display the chart.")
 
 
-if employee_tab is not None:
+
     with employee_tab:
         st.header("Per Diem Inquiry by City")
         history_files = get_history_files()
@@ -1640,75 +1640,69 @@ if employee_tab is not None:
             if st.session_state["selected_report_file"] not in history_files:
                 st.session_state["selected_report_file"] = history_files[0]
             selected_file = st.session_state["selected_report_file"]
-
             report_data = load_report_data(selected_file)
-            if report_data and "cities" in report_data and report_data["cities"]:
-                cities_df = pd.DataFrame(report_data["cities"])
+            if report_data and 'cities' in report_data and report_data['cities']:
+                cities_df = pd.DataFrame(report_data['cities'])
                 target_entries = get_target_city_entries()
-                countries = sorted({entry["country"] for entry in target_entries})
+                countries = sorted({entry['country'] for entry in target_entries})
 
-                # --- Country / City 선택 (기본 공란) ---
+                
                 col_country, col_city = st.columns(2)
+
                 with col_country:
-                    selectable_countries = [
-                        c
-                        for c in countries
-                        if c in cities_df["country_display"].unique()
-                    ]
+                    selectable_countries = [c for c in countries if c in cities_df['country_display'].unique()]
                     sel_country = st.selectbox(
                         "Country:",
-                        selectable_countries,
+                        options=selectable_countries,
                         key=f"country_{selected_file}",
-                        index=None,
+                        index=None,  # 🔧 기본값: 미선택 상태
                         placeholder="Select Country",
                     )
 
-                with col_city:
-                    if sel_country:
-                        filtered_cities_all = sorted(
-                            {
-                                entry["city"]
-                                for entry in target_entries
-                                if entry["country"] == sel_country
-                            }
-                        )
-                    else:
-                        filtered_cities_all = []
+                if sel_country:
+                    filtered_cities_all = sorted({
+                        entry['city'] for entry in target_entries if entry['country'] == sel_country
+                    })
+                else:
+                    filtered_cities_all = []
 
+                with col_city:
                     sel_city = st.selectbox(
                         "City:",
-                        filtered_cities_all,
+                        options=filtered_cities_all,
                         key=f"city_{selected_file}",
-                        index=None,
+                        index=None,          # 🔧 기본값: 미선택 상태
                         placeholder="Select City",
                     )
+                    if sel_country and not filtered_cities_all:
+                        st.warning("There are no registered cities for the selected country.")
 
-                # --- 날짜 / Job Level (기본 공란) ---
                 col_start, col_end, col_level = st.columns([1, 1, 1])
+
                 with col_start:
                     trip_start = st.date_input(
                         "Trip Start Date",
-                        value=None,
+                        value=None,  # 🔧 기본값 공란
                         key=f"trip_start_{selected_file}",
-                        format="YYYY/MM/DD",
                     )
+
                 with col_end:
                     trip_end = st.date_input(
                         "Trip End Date",
-                        value=None,
+                        value=None,  # 🔧 기본값 공란
                         key=f"trip_end_{selected_file}",
-                        format="YYYY/MM/DD",
                     )
+
                 with col_level:
                     sel_level = st.selectbox(
                         "Job Level:",
-                        list(JOB_LEVEL_RATIOS.keys()),
+                        options=list(JOB_LEVEL_RATIOS.keys()),
                         key=f"l_{selected_file}",
-                        index=None,
+                        index=None,          # 🔧 기본값: 미선택
                         placeholder="Select Job Level",
                     )
 
-                # 안내 문구 + Search 버튼
+                # ↓↓↓ 새로 추가 (또는 기존 문구는 여기로 이동)
                 st.markdown(
                     "<p style='margin-top:0.7rem;font-size:0.9rem;color:#666;'>"
                     "Please select all of the above fields."
@@ -1716,522 +1710,268 @@ if employee_tab is not None:
                     unsafe_allow_html=True,
                 )
 
-                run_search = st.button(
+                search_clicked = st.button(
                     "Search",
                     type="primary",
-                    use_container_width=True,
-                    key=f"search_{selected_file}",
+                    use_container_width=True
                 )
 
-                # -------------------------------
-                #  Search 클릭 이후 로직
-                # -------------------------------
+
+
+                # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
+                msg_col, btn_col = st.columns([3, 1])
+                with msg_col:
+                    st.markdown("**Please select all of the above fields.**")
+                with btn_col:
+                    run_search = st.button(
+                        "Search",
+                        key=f"search_{selected_file}",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+
+
                 if run_search:
                     # 🔒 필수 입력값 모두 체크
-                    if not (
-                        sel_country
-                        and sel_city
-                        and sel_level
-                        and trip_start
-                        and trip_end
-                    ):
-                        st.error("Please select all of the above fields.")
-                    else:
-                        # 날짜 타입 정리
-                        if isinstance(trip_start, datetime):
-                            trip_start = trip_start.date()
-                        if isinstance(trip_end, datetime):
-                            trip_end = trip_end.date()
-
-                        trip_valid = trip_end >= trip_start
-                        if not trip_valid:
-                            st.error(
-                                "The end date must be on or after the start date."
-                            )
-                            trip_days = 0
-                            trip_term = "Short-term"
-                            trip_multiplier = SHORT_TERM_MULTIPLIER
-                            trip_term_label = TRIP_TERM_LABELS.get(
-                                trip_term, trip_term
-                            )
+                    if search_clicked:
+                        if not (sel_country and sel_city and sel_level and trip_start and trip_end):
+                            st.error("Please select all of the above fields.")
                         else:
-                            trip_days = (trip_end - trip_start).days + 1
-                            trip_term, trip_multiplier = classify_trip_duration(
-                                trip_days
-                            )
-                            trip_term_label = TRIP_TERM_LABELS.get(
-                                trip_term, trip_term
-                            )
-                            st.caption(
-                                f"Auto-classified trip type: {trip_term_label} · {trip_days}-day trip"
-                            )
+                            if isinstance(trip_start, datetime):
+                                trip_start = trip_start.date()
+                            if isinstance(trip_end, datetime):
+                                trip_end = trip_end.date()
 
-                        # 🚩 City 필터링도 run_search 안에서 처리
-                        if sel_city:
-                            filtered_trip_cities = []
-                            for entry in target_entries:
-                                if (
-                                    entry["country"] != sel_country
-                                    or entry["city"] != sel_city
-                                ):
-                                    continue
-                                if trip_valid and trip_term not in entry.get(
-                                    "trip_lengths", TRIP_LENGTH_OPTIONS
-                                ):
-                                    continue
-                                filtered_trip_cities.append(entry["city"])
-                            if trip_valid and not filtered_trip_cities:
-                                st.warning(
-                                    "No city data available for this period. "
-                                    "Adjust the trip type to 'Short-term' or check city settings."
-                                )
-                                sel_city = None
+                            trip_valid = trip_end >= trip_start
+                            if not trip_valid:
+                                st.error("The end date must be on or after the start date.")
+                                trip_days = 0
+                                trip_term = "Short-term"
+                                trip_multiplier = SHORT_TERM_MULTIPLIER
+                                trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
+                            else:
+                                trip_days = (trip_end - trip_start).days + 1
+                                trip_term, trip_multiplier = classify_trip_duration(trip_days)
+                                trip_term_label = TRIP_TERM_LABELS.get(trip_term, trip_term)
+                                st.caption(f"Auto-classified trip type: {trip_term_label} · {trip_days}-day trip")
 
-                        # ---------------------------
-                        #  유효 입력일 때만 계산 수행
-                        # ---------------------------
-                        if (
-                            trip_valid
-                            and sel_city
-                            and sel_level
-                            and trip_days is not None
-                        ):
-                            # 🔽 이 아래는 기존 로직 (요약 카드 + Basis of Calculation 등),
-                            #    단, 모든 수치를 직급 비율(JOB_LEVEL_RATIOS)에 맞춰 표시하도록 수정
-                            city_row = cities_df[cities_df["city"] == sel_city]
-                            if city_row.empty:
-                                st.error(
-                                    "No analysis data found for the selected city."
+                            # 🚩 City 필터링도 run_search 안에서 처리
+                            if sel_city:
+                                filtered_trip_cities = []
+                                for entry in target_entries:
+                                    if entry['country'] != sel_country or entry['city'] != sel_city:
+                                        continue
+                                    if trip_valid and trip_term not in entry.get('trip_lengths', TRIP_LENGTH_OPTIONS):
+                                        continue
+                                    filtered_trip_cities.append(entry['city'])
+                                if trip_valid and not filtered_trip_cities:
+                                    st.warning("No city data available for this period. Adjust the trip type to 'Short-term' or check city settings.")
+                                    sel_city = None
+
+                            if trip_valid and sel_city and sel_level and trip_days is not None:
+                                # 🔽 이 아래는 기존 로직 그대로 (요약 카드 + Basis of Calculation 등)
+                                city_data = cities_df[cities_df['city'] == sel_city].iloc[0].to_dict()
+                                final_allowance = city_data.get('final_allowance')
+                            st.subheader(f"{sel_country} - {sel_city} Results")
+
+                            level_ratio = JOB_LEVEL_RATIOS.get(sel_level, 1.0)  # 🔧 직급 비율을 여기서 미리 계산
+
+                            if final_allowance:
+                                adjusted_daily_allowance = round(final_allowance * trip_multiplier)
+                                level_daily_allowance = round(adjusted_daily_allowance * level_ratio)
+                                trip_total_allowance = level_daily_allowance * trip_days
+
+                                render_primary_summary(
+                                    f"{sel_level.split(' ')[0]}",
+                                    trip_total_allowance,
+                                    level_daily_allowance,
+                                    trip_days,
+                                    trip_term_label,
+                                    trip_multiplier
                                 )
                             else:
-                                city_data = city_row.iloc[0].to_dict()
-                                final_allowance = city_data.get("final_allowance")
-                                st.subheader(f"{sel_country} - {sel_city} Results")
+                                st.metric(f"{sel_level.split(' ')[0]} Daily Recommended Per Diem", "No Amount")
 
-                                level_ratio = JOB_LEVEL_RATIOS.get(
-                                    sel_level, 1.0
-                                )
+                            # 🔽 여기부터 Basis of Calculation 블록이 이어집니다 (아래 2️⃣에서 추가 수정)
 
-                                if final_allowance:
-                                    # final_allowance: Short-term 기준, city-level 기준 값
-                                    adjusted_daily_allowance = round(
-                                        final_allowance * trip_multiplier
-                                    )
-                                    level_daily_allowance = round(
-                                        adjusted_daily_allowance * level_ratio
-                                    )
-                                    trip_total_allowance = (
-                                        level_daily_allowance * trip_days
-                                    )
 
-                                    render_primary_summary(
-                                        f"{sel_level.split(' ')[0]}",
-                                        trip_total_allowance,
-                                        level_daily_allowance,
-                                        trip_days,
-                                        trip_term_label,
-                                        trip_multiplier,
-                                    )
-                                else:
-                                    st.metric(
-                                        f"{sel_level.split(' ')[0]} Daily Recommended Per Diem",
-                                        "No Amount",
-                                    )
+                    menu_samples = city_data.get('menu_samples') or []
 
-                                menu_samples = (
-                                    city_data.get("menu_samples") or []
-                                )
+                    detail_cards_visible = any([
+                        employee_sections_visibility["show_un_basis"],
+                        employee_sections_visibility["show_ai_estimate"],
+                        employee_sections_visibility["show_weighted_result"],
+                        employee_sections_visibility["show_ai_market_detail"],
+                    ])
+                    extra_content_visible = (
+                        employee_sections_visibility["show_provenance"]
+                        or (employee_sections_visibility["show_menu_samples"] and menu_samples)
+                    )
 
-                                detail_cards_visible = any(
-                                    [
-                                        employee_sections_visibility[
-                                            "show_un_basis"
-                                        ],
-                                        employee_sections_visibility[
-                                            "show_ai_estimate"
-                                        ],
-                                        employee_sections_visibility[
-                                            "show_weighted_result"
-                                        ],
-                                        employee_sections_visibility[
-                                            "show_ai_market_detail"
-                                        ],
-                                    ]
-                                )
-                                extra_content_visible = (
-                                    employee_sections_visibility[
-                                        "show_provenance"
-                                    ]
-                                    or (
-                                        employee_sections_visibility[
-                                            "show_menu_samples"
-                                        ]
-                                        and menu_samples
-                                    )
-                                )
+                    if detail_cards_visible or extra_content_visible:
+                        st.markdown("---")
+                        st.write("**Basis of Calculation (Daily Rate)**")
+                        un_data = city_data.get('un', {})
+                        ai_summary = city_data.get('ai_summary', {})
+                        season_context = city_data.get('season_context', {})
 
-                                if (
-                                    detail_cards_visible
-                                    or extra_content_visible
-                                ):
+                        ai_avg = ai_summary.get('season_adjusted_mean_rounded')
+                        ai_runs = ai_summary.get('successful_runs', len(ai_summary.get('used_totals', [])))
+                        ai_attempts = ai_summary.get('attempted_runs', NUM_AI_CALLS)
+                        removed_totals = ai_summary.get('removed_totals') or []
+                        season_label = season_context.get('label') or ai_summary.get('season_label', 'Standard')
+                        season_factor = season_context.get('factor', ai_summary.get('season_factor', 1.0))
+
+                        ai_notes_parts = [f"Success {ai_runs}/{ai_attempts} runs"]
+                        if removed_totals:
+                            ai_notes_parts.append(f"Outliers {removed_totals}")
+                        if season_label:
+                            ai_notes_parts.append(f"Season {season_label} ×{season_factor}")
+                        ai_notes = " | ".join(ai_notes_parts) if ai_notes_parts else "No AI Data"
+                        
+                        # [New 1] Reason for applying dynamic weights
+                        weights_info = ai_summary.get("weighted_average_components", {}).get("weights", {})
+                        weights_source = weights_info.get("source", "N/A")
+                        un_weight_pct = f"{weights_info.get('un_weight', 0.5):.0%}"
+                        ai_weight_pct = f"{weights_info.get('ai_weight', 0.5):.0%}"
+                        weight_caption = f"Blend: UN-DSA ({un_weight_pct}) + AI ({ai_weight_pct}) | Reason: {weights_source}"
+
+                        un_base = None
+                        un_display = None
+                        if un_data.get('status') == 'ok' and isinstance(un_data.get('per_diem_excl_lodging'), (int, float)):
+                            un_base = un_data['per_diem_excl_lodging']
+                            # 🔧 레벨 + 롱텀/숏텀 multiplier 모두 반영
+                            un_display = round(un_base * trip_multiplier * level_ratio)
+
+                        ai_display = round(ai_avg * trip_multiplier * level_ratio) if ai_avg is not None else None
+                        weighted_display = round(final_allowance * trip_multiplier * level_ratio) if final_allowance is not None else None
+
+
+
+                        first_row_keys = []
+                        if employee_sections_visibility["show_un_basis"]:
+                            first_row_keys.append("un")
+                        if employee_sections_visibility["show_ai_estimate"]:
+                            first_row_keys.append("ai")
+                        if employee_sections_visibility["show_weighted_result"]:
+                            first_row_keys.append("weighted")
+
+                        if first_row_keys:
+                            first_row_cols = st.columns(len(first_row_keys))
+                            for key, col in zip(first_row_keys, first_row_cols):
+                                with col:
+                                    if key == "un":
+                                        if un_base is not None:
+                                            # 🔧 레벨 기준 Short / Long 값
+                                            base_short_level = round(un_base * level_ratio)
+                                            base_long_level = round(un_base * trip_multiplier * level_ratio)
+                                            if trip_term == "Long-term":
+                                                un_caption = f"Base (level-adjusted): Short-term $ {base_short_level:,} → Long-term $ {base_long_level:,}"
+                                            else:
+                                                un_caption = f"Base (level-adjusted): Short-term $ {base_short_level:,}"
+                                        else:
+                                            un_caption = city_data.get("notes", "")
+
+                                        render_stat_card(
+                                            "UN-DSA Basis",
+                                            f"$ {un_display:,}" if un_display is not None else "N/A",
+                                            un_caption,
+                                            "secondary"
+                                        )
+
+                                    
+                                    elif key == "ai":
+                                        if ai_avg is not None:
+                                            # ai_avg 는 이미 season-adjusted (도시 기준)
+                                            ai_short_level = round(ai_avg * level_ratio)
+                                            ai_long_level = round(ai_avg * trip_multiplier * level_ratio)
+                                            if trip_term == "Long-term":
+                                                ai_level_caption = f"Short-term $ {ai_short_level:,} → Long-term $ {ai_long_level:,}"
+                                            else:
+                                                ai_level_caption = f"Short-term $ {ai_short_level:,}"
+                                        else:
+                                            ai_level_caption = ""
+
+                                        # 기존 성공 횟수 / 시즌 정보는 그대로 유지
+                                        ai_full_caption = " | ".join(
+                                            part for part in [ai_notes, ai_level_caption] if part
+                                        )
+
+                                        render_stat_card(
+                                            "AI Market Estimate (Seasonal Adj.)",
+                                            f"$ {ai_display:,}" if ai_display is not None else "N/A",
+                                            ai_full_caption,
+                                            "secondary"
+                                        )
+
+                                    
+                                    else:  # key == "weighted"
+                                        if final_allowance is not None:
+                                            weighted_short_level = round(final_allowance * level_ratio)
+                                            weighted_long_level = round(final_allowance * trip_multiplier * level_ratio)
+                                            if trip_term == "Long-term":
+                                                amount_part = f"Short-term $ {weighted_short_level:,} → Long-term $ {weighted_long_level:,}"
+                                            else:
+                                                amount_part = f"Short-term $ {weighted_short_level:,}"
+                                            weighted_caption = f"{amount_part} | {weight_caption}"
+                                        else:
+                                            weighted_caption = weight_caption
+
+                                        render_stat_card(
+                                            "Weighted Average Result",
+                                            f"$ {weighted_display:,}" if weighted_display is not None else "N/A",
+                                            weighted_caption,
+                                            "secondary"
+                                        )
+
+                        # [New 2] Detailed cost breakdown (merged with show_ai_market_detail logic)
+                        if employee_sections_visibility["show_ai_market_detail"]:
+                            st.markdown("<br>", unsafe_allow_html=True) # line break
+                            
+                            mean_food = ai_summary.get("mean_food", 0)
+                            mean_trans = ai_summary.get("mean_transport", 0)
+                            mean_misc = ai_summary.get("mean_misc", 0)
+                            
+                            # Apply long-term/seasonal rates
+                            food_display = round(mean_food * season_factor * trip_multiplier)
+                            trans_display = round(mean_trans * season_factor * trip_multiplier)
+                            misc_display = round(mean_misc * season_factor * trip_multiplier)
+                            
+                            st.write("###### AI Estimate Details (Daily Rate)")
+                            col_f, col_t, col_m = st.columns(3)
+                            with col_f:
+                                render_stat_card("Est. Food", f"$ {food_display:,}", f"Short-term base: $ {round(mean_food)}", "muted")
+                            with col_t:
+                                render_stat_card("Est. Transport", f"$ {trans_display:,}", f"Short-term base: $ {round(mean_trans)}", "muted")
+                            with col_m:
+                                render_stat_card("Est. Misc", f"$ {misc_display:,}", f"Short-term base: $ {round(mean_misc)}", "muted")
+                        
+                        # [Improvement 3] The show_weighted_result card is redundant, so the block below is removed
+                        # (Original second_row_keys logic removed)
+
+                        if employee_sections_visibility["show_provenance"]:
+                            with st.expander("AI provenance & prompts"):
+                                provenance_payload = {
+                                    "season_context": season_context,
+                                    "ai_summary": ai_summary,
+                                    "ai_runs": city_data.get('ai_provenance', []),
+                                    "reference_links": build_reference_link_lines(menu_samples, max_items=8),
+                                    "weights": weights_info,
+                                }
+                                st.json(provenance_payload)
+
+                        if employee_sections_visibility["show_menu_samples"] and menu_samples:
+                            with st.expander("Reference menu samples"):
+                                link_lines = build_reference_link_lines(menu_samples, max_items=8)
+                                if link_lines:
+                                    st.markdown("**Direct links**")
+                                    for link_line in link_lines:
+                                        st.markdown(f"- {link_line}")
                                     st.markdown("---")
-                                    st.write(
-                                        "**Basis of Calculation (Daily Rate)**"
-                                    )
-
-                                    un_data = city_data.get("un", {})
-                                    ai_summary = city_data.get(
-                                        "ai_summary", {}
-                                    )
-                                    season_context = city_data.get(
-                                        "season_context", {}
-                                    )
-
-                                    ai_avg = ai_summary.get(
-                                        "season_adjusted_mean_rounded"
-                                    )
-                                    ai_runs = ai_summary.get(
-                                        "successful_runs",
-                                        len(
-                                            ai_summary.get(
-                                                "used_totals", []
-                                            )
-                                        ),
-                                    )
-                                    ai_attempts = ai_summary.get(
-                                        "attempted_runs", NUM_AI_CALLS
-                                    )
-                                    removed_totals = (
-                                        ai_summary.get("removed_totals")
-                                        or []
-                                    )
-                                    season_label = (
-                                        season_context.get("label")
-                                        or ai_summary.get(
-                                            "season_label", "Standard"
-                                        )
-                                    )
-                                    season_factor = season_context.get(
-                                        "factor",
-                                        ai_summary.get(
-                                            "season_factor", 1.0
-                                        ),
-                                    )
-
-                                    ai_notes_parts = [
-                                        f"Success {ai_runs}/{ai_attempts} runs"
-                                    ]
-                                    if removed_totals:
-                                        ai_notes_parts.append(
-                                            f"Outliers {removed_totals}"
-                                        )
-                                    if season_label:
-                                        ai_notes_parts.append(
-                                            f"Season {season_label} ×{season_factor}"
-                                        )
-                                    ai_notes = (
-                                        " | ".join(ai_notes_parts)
-                                        if ai_notes_parts
-                                        else "No AI Data"
-                                    )
-
-                                    # 동적 가중치 정보
-                                    weights_info = (
-                                        ai_summary.get(
-                                            "weighted_average_components", {}
-                                        ).get("weights", {})
-                                    )
-                                    weights_source = weights_info.get(
-                                        "source", "N/A"
-                                    )
-                                    un_weight_pct = (
-                                        f"{weights_info.get('un_weight', 0.5):.0%}"
-                                    )
-                                    ai_weight_pct = (
-                                        f"{weights_info.get('ai_weight', 0.5):.0%}"
-                                    )
-                                    weight_caption = (
-                                        f"Blend: UN-DSA ({un_weight_pct}) + AI ({ai_weight_pct})"
-                                        f" | Reason: {weights_source}"
-                                    )
-
-                                    # --- UN / AI / Weighted 값 + 직급 비율 적용 ---
-                                    un_base = None
-                                    un_display = None
-                                    level_un_base = None
-                                    level_un_display = None
-                                    if un_data.get("status") == "ok" and isinstance(
-                                        un_data.get(
-                                            "per_diem_excl_lodging"
-                                        ),
-                                        (int, float),
-                                    ):
-                                        un_base = un_data[
-                                            "per_diem_excl_lodging"
-                                        ]  # city 기준 short-term
-                                        un_display = round(
-                                            un_base * trip_multiplier
-                                        )
-                                        level_un_base = round(
-                                            un_base * level_ratio
-                                        )
-                                        level_un_display = round(
-                                            un_display * level_ratio
-                                        )
-
-                                    ai_display = None
-                                    level_ai_avg = None
-                                    level_ai_display = None
-                                    if ai_avg is not None:
-                                        ai_display = round(
-                                            ai_avg * trip_multiplier
-                                        )
-                                        level_ai_avg = round(
-                                            ai_avg * level_ratio
-                                        )
-                                        level_ai_display = round(
-                                            ai_display * level_ratio
-                                        )
-
-                                    weighted_display = None
-                                    level_weighted_display = None
-                                    if final_allowance is not None:
-                                        weighted_display = round(
-                                            final_allowance
-                                            * trip_multiplier
-                                        )
-                                        level_weighted_display = round(
-                                            weighted_display * level_ratio
-                                        )
-
-                                    # --- 1열 카드(UN / AI / Weighted) ---
-                                    first_row_keys = []
-                                    if employee_sections_visibility[
-                                        "show_un_basis"
-                                    ]:
-                                        first_row_keys.append("un")
-                                    if employee_sections_visibility[
-                                        "show_ai_estimate"
-                                    ]:
-                                        first_row_keys.append("ai")
-                                    if employee_sections_visibility[
-                                        "show_weighted_result"
-                                    ]:
-                                        first_row_keys.append("weighted")
-
-                                    if first_row_keys:
-                                        first_row_cols = st.columns(
-                                            len(first_row_keys)
-                                        )
-                                        for key, col in zip(
-                                            first_row_keys, first_row_cols
-                                        ):
-                                            with col:
-                                                if key == "un":
-                                                    if (
-                                                        level_un_display
-                                                        is not None
-                                                    ):
-                                                        if (
-                                                            trip_term
-                                                            == "Long-term"
-                                                        ):
-                                                            un_caption = (
-                                                                f"Short-term $ {level_un_base:,} → "
-                                                                f"Long-term $ {level_un_display:,}"
-                                                            )
-                                                        else:
-                                                            un_caption = f"Short-term base $ {level_un_base:,}"
-                                                    else:
-                                                        un_caption = city_data.get(
-                                                            "notes", ""
-                                                        )
-
-                                                    render_stat_card(
-                                                        "UN-DSA Basis",
-                                                        f"$ {level_un_display:,}"
-                                                        if level_un_display
-                                                        is not None
-                                                        else "N/A",
-                                                        un_caption,
-                                                        "secondary",
-                                                    )
-
-                                                elif key == "ai":
-                                                    if (
-                                                        level_ai_display
-                                                        is not None
-                                                    ):
-                                                        if (
-                                                            trip_term
-                                                            == "Long-term"
-                                                        ):
-                                                            ai_caption_base = (
-                                                                f"Short-term $ {level_ai_avg:,} → "
-                                                                f"Long-term $ {level_ai_display:,}"
-                                                            )
-                                                        else:
-                                                            ai_caption_base = f"Short-term base $ {level_ai_avg:,}"
-                                                    else:
-                                                        ai_caption_base = ""
-
-                                                    ai_full_caption = (
-                                                        f"{ai_notes} | {ai_caption_base}".strip(
-                                                            " | "
-                                                        )
-                                                    )
-                                                    render_stat_card(
-                                                        "AI Market Estimate (Seasonal Adj.)",
-                                                        f"$ {level_ai_display:,}"
-                                                        if level_ai_display
-                                                        is not None
-                                                        else "N/A",
-                                                        ai_full_caption,
-                                                        "secondary",
-                                                    )
-
-                                                else:  # weighted
-                                                    if (
-                                                        level_weighted_display
-                                                        is not None
-                                                    ):
-                                                        if (
-                                                            trip_term
-                                                            == "Long-term"
-                                                        ):
-                                                            weighted_caption = (
-                                                                f"Short-term $ {round(final_allowance * level_ratio):,} → "
-                                                                f"Long-term $ {level_weighted_display:,} | {weight_caption}"
-                                                            )
-                                                        else:
-                                                            weighted_caption = (
-                                                                f"Short-term base $ {round(final_allowance * level_ratio):,} | "
-                                                                f"{weight_caption}"
-                                                            )
-                                                    else:
-                                                        weighted_caption = weight_caption
-
-                                                    render_stat_card(
-                                                        "Weighted Average Result",
-                                                        f"$ {level_weighted_display:,}"
-                                                        if level_weighted_display
-                                                        is not None
-                                                        else "N/A",
-                                                        weighted_caption,
-                                                        "secondary",
-                                                    )
-
-                                    # --- AI 상세 (Food / Transport / Misc) ---
-                                    if employee_sections_visibility[
-                                        "show_ai_market_detail"
-                                    ]:
-                                        st.markdown(
-                                            "<br>",
-                                            unsafe_allow_html=True,
-                                        )
-
-                                        mean_food = ai_summary.get(
-                                            "mean_food", 0
-                                        )
-                                        mean_trans = ai_summary.get(
-                                            "mean_transport", 0
-                                        )
-                                        mean_misc = ai_summary.get(
-                                            "mean_misc", 0
-                                        )
-
-                                        food_display = round(
-                                            mean_food
-                                            * season_factor
-                                            * trip_multiplier
-                                        )
-                                        trans_display = round(
-                                            mean_trans
-                                            * season_factor
-                                            * trip_multiplier
-                                        )
-                                        misc_display = round(
-                                            mean_misc
-                                            * season_factor
-                                            * trip_multiplier
-                                        )
-
-                                        st.write(
-                                            "###### AI Estimate Details (Daily Rate)"
-                                        )
-                                        col_f, col_t, col_m = st.columns(3)
-                                        with col_f:
-                                            render_stat_card(
-                                                "Est. Food",
-                                                f"$ {food_display:,}",
-                                                f"Short-term base: $ {round(mean_food)}",
-                                                "muted",
-                                            )
-                                        with col_t:
-                                            render_stat_card(
-                                                "Est. Transport",
-                                                f"$ {trans_display:,}",
-                                                f"Short-term base: $ {round(mean_trans)}",
-                                                "muted",
-                                            )
-                                        with col_m:
-                                            render_stat_card(
-                                                "Est. Misc",
-                                                f"$ {misc_display:,}",
-                                                f"Short-term base: $ {round(mean_misc)}",
-                                                "muted",
-                                            )
-
-                                    # --- Provenance / Menu Samples ---
-                                    if employee_sections_visibility[
-                                        "show_provenance"
-                                    ]:
-                                        with st.expander(
-                                            "AI provenance & prompts"
-                                        ):
-                                            provenance_payload = {
-                                                "season_context": season_context,
-                                                "ai_summary": ai_summary,
-                                                "ai_runs": city_data.get(
-                                                    "ai_provenance", []
-                                                ),
-                                                "reference_links": build_reference_link_lines(
-                                                    menu_samples,
-                                                    max_items=8,
-                                                ),
-                                                "weights": weights_info,
-                                            }
-                                            st.json(provenance_payload)
-
-                                    if (
-                                        employee_sections_visibility[
-                                            "show_menu_samples"
-                                        ]
-                                        and menu_samples
-                                    ):
-                                        with st.expander(
-                                            "Reference menu samples"
-                                        ):
-                                            link_lines = build_reference_link_lines(
-                                                menu_samples, max_items=8
-                                            )
-                                            if link_lines:
-                                                st.markdown(
-                                                    "**Direct links**"
-                                                )
-                                                for link_line in link_lines:
-                                                    st.markdown(
-                                                        f"- {link_line}"
-                                                    )
-                                                st.markdown("---")
-                                            st.table(
-                                                pd.DataFrame(menu_samples)
-                                            )
-            # report_data 없을 때
-            else:
-                st.error("Failed to load report data.")
-
-
+                                st.table(pd.DataFrame(menu_samples))
+                    else:
+                        st.info("The administrator has hidden the detailed calculation basis.")
 
 # --- Admin: Report Analysis 탭 전체 코드 ---
 if admin_analysis_tab is not None:
