@@ -1717,17 +1717,17 @@ if employee_tab is not None:
                     use_container_width=True
                 )
 
-                # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
-                msg_col, btn_col = st.columns([3, 1])
-                with msg_col:
-                    st.markdown("**Please select all of the above fields.**")
-                with btn_col:
-                    run_search = st.button(
-                        "Search",
-                        key=f"search_{selected_file}",
-                        type="primary",
-                        use_container_width=True,
-                    )
+                # # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
+                # msg_col, btn_col = st.columns([3, 1])
+                # with msg_col:
+                #     st.markdown("**Please select all of the above fields.**")
+                # with btn_col:
+                #     run_search = st.button(
+                #         "Search",
+                #         key=f"search_{selected_file}",
+                #         type="primary",
+                #         use_container_width=True,
+                #     )
 
 
 
