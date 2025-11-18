@@ -1703,36 +1703,24 @@ if employee_tab is not None:
                     )
 
 
-                # ↓↓↓ 새로 추가 (또는 기존 문구는 여기로 이동)
-                st.markdown(
-                    "<p style='margin-top:0.7rem;font-size:0.9rem;color:#666;'>"
-                    "Please select all of the above fields."
-                    "</p>",
-                    unsafe_allow_html=True,
                 )
 
-                search_clicked = st.button(
-                    "Search",
-                    type="primary",
-                    use_container_width=True
-                )
-
-                # # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
-                # msg_col, btn_col = st.columns([3, 1])
-                # with msg_col:
-                #     st.markdown("**Please select all of the above fields.**")
-                # with btn_col:
-                #     run_search = st.button(
-                #         "Search",
-                #         key=f"search_{selected_file}",
-                #         type="primary",
-                #         use_container_width=True,
-                #     )
+                # 🔽 안내 문구 + 조회 버튼 (텍스트 왼쪽 / 버튼 오른쪽)
+                msg_col, btn_col = st.columns([3, 1])
+                with msg_col:
+                    st.markdown("**Please select all of the above fields.**")
+                with btn_col:
+                    run_search = st.button(
+                        "Search",
+                        key=f"search_{selected_file}",
+                        type="primary",
+                        use_container_width=True,
+                    )
 
 
 
                 if run_search:
-                    if search_clicked:
+                    if run_search:
                     # 🔒 필수 입력값 모두 체크
                         if not (sel_country and sel_city and sel_level and trip_start and trip_end):
                             st.error("Please select all of the above fields.")
