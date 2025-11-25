@@ -1715,6 +1715,21 @@ if employee_tab is not None:
                         placeholder="Select Job Level",
                     )
 
+
+                st.markdown("""
+                    <style>
+                    div.stButton > button:first-child {
+                        background-color: #007BFF;
+                        color: white;
+                        border: none;
+                    }
+                    div.stButton > button:hover {
+                        background-color: #0056b3; /* 마우스 올렸을 때 더 진한 파란색 */
+                        color: white;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                
                 # --- 안내 문구 + Search 버튼 ---
                 msg_col, btn_col = st.columns([3, 1])
                 with msg_col:
