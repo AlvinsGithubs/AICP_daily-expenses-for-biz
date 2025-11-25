@@ -1658,7 +1658,7 @@ if employee_tab is not None:
                         if c in cities_df["country_display"].unique()
                     ]
                     sel_country = st.selectbox(
-                        "Country:",
+                        "Country",
                         options=selectable_countries,
                         key=f"country_{selected_file}",
                         index=None,  # 기본: 미선택
@@ -1678,7 +1678,7 @@ if employee_tab is not None:
 
                 with col_city:
                     sel_city = st.selectbox(
-                        "City:",
+                        "City",
                         options=filtered_cities_all,
                         key=f"city_{selected_file}",
                         index=None,
@@ -1708,7 +1708,7 @@ if employee_tab is not None:
 
                 with col_level:
                     sel_level = st.selectbox(
-                        "Job Level:",
+                        "Job Level",
                         options=list(JOB_LEVEL_RATIOS.keys()),
                         key=f"l_{selected_file}",
                         index=None,
