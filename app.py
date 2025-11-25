@@ -1719,7 +1719,7 @@ if employee_tab is not None:
                 st.markdown("""
                     <style>
                     div.stButton > button:first-child {
-                        background-color: #007BFF;
+                        background-color: #25258e;
                         color: white;
                         border: none;
                     }
@@ -1729,7 +1729,7 @@ if employee_tab is not None:
                     }
                     </style>
                 """, unsafe_allow_html=True)
-                
+
                 # --- 안내 문구 + Search 버튼 ---
                 msg_col, btn_col = st.columns([3, 1])
                 with msg_col:
