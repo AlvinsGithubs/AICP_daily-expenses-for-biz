@@ -1719,7 +1719,7 @@ if employee_tab is not None:
                 st.markdown("""
                     <style>
                     div.stButton > button:first-child {
-                        background-color: #1e3c72;
+                        background-color: #1e3c72 0%;
                         color: white;
                         border: none;
                     }
