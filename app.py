@@ -350,13 +350,19 @@ def render_stat_card(title: str, value: str, caption: str = "", variant: str = "
 
 def render_primary_summary(level_label: str, total: int, daily: int, days: int, term_label: str, multiplier: float) -> None:
     style = CARD_STYLES["primary"]
+    
+    # [수정] 사용자의 요청에 따라 산출식 표기 변경
+    # 기존: $ {daily} × {days} days × {term_label} (×{multiplier}) -> 오해 소지 있음
+    # 변경: $ {daily} ({term_label} {multiplier}) × {days} days = $ {total} -> 직관적임
+    calculation_text = f"$ {daily:,} ({term_label} {multiplier:.2f}) × {days} days = $ {total:,}"
+
     card_html = f"""
     <div style="{style['container'].replace('text-align:center;', 'text-align:left;')}">
         <div style="{style['title']}">Estimated Total Per Diem ({level_label})</div>
         <div style="{style['value']}">$ {total:,}</div>
         <div style="{style['caption']}">
             <span style='font-size:0.95rem;opacity:0.8;'>Calculation</span><br/>
-            $ {daily:,} × {days} days × {term_label} (×{multiplier:.2f})
+            {calculation_text}
         </div>
     </div>
     """
