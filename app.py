@@ -407,7 +407,7 @@ def load_ui_settings(force: bool = False) -> Dict[str, Any]:
 # --- [v20.0 DB연동] 끝 ---
 
 JOB_LEVEL_RATIOS = {
-    "L3": 0.60, "L4": 0.60, "L5": 0.80, "L6": 1.00,
+    "L3": 0.80, "L4": 0.80, "L5": 0.90, "L6": 1.00,
     "L7": 1.00, "L8": 1.20, "L9": 1.50, "L10": 1.50,
 }
 
