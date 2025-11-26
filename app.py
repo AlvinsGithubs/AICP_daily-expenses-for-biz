@@ -432,6 +432,7 @@ DEFAULT_TARGET_CITY_ENTRIES: List[Dict[str, Any]] = [
     {"region": "North America", "city": "Las Vegas", "country": "USA", "neighborhood": "The Strip (Paradise)", "hotel_cluster": "MGM Grand & Mandalay Bay"},
     {"region": "North America", "city": "Seattle", "country": "USA"},
     {"region": "North America", "city": "Florida", "country": "USA"},
+    {"region": "North America", "city": "North Carolina", "country": "USA"},
     {"region": "North America", "city": "San Francisco", "country": "USA", "neighborhood": "SoMa & Financial District", "hotel_cluster": "Hilton Union Square / Marriott Marquis"},
     {"region": "North America", "city": "Toronto", "country": "Canada"},
     {"region": "Europe", "city": "Valletta", "country": "Malta"},
@@ -445,6 +446,9 @@ DEFAULT_TARGET_CITY_ENTRIES: List[Dict[str, Any]] = [
     {"region": "Europe", "city": "Nicosia", "country": "Cyprus"},
     {"region": "Europe", "city": "Paris", "country": "France"},
     {"region": "Europe", "city": "Provence", "country": "France"},
+    {"region": "Europe", "city": "Vienna", "country": "Austria"},
+    {"region": "Europe", "city": "Tallinn", "country": "Estonia"},
+    {"region": "Europe", "city": "Bratislava", "country": "Slovakia"},
     {"region": "Asia", "city": "Taipei", "country": "Taiwan", "un_dsa_substitute": {"city": "Kuala Lumpur", "country": "Malaysia"}},
     {"region": "Asia", "city": "Tokyo", "country": "Japan", "neighborhood": "Shinjuku & Roppongi", "hotel_cluster": "Hilton Tokyo / ANA InterContinental"},
     {"region": "Asia", "city": "Manila", "country": "Philippines"},
@@ -452,10 +456,12 @@ DEFAULT_TARGET_CITY_ENTRIES: List[Dict[str, Any]] = [
     {"region": "Asia", "city": "Busan", "country": "Korea, Republic of"},
     {"region": "Asia", "city": "Jeju Island", "country": "Korea, Republic of"},
     {"region": "Asia", "city": "Incheon", "country": "Korea, Republic of"},
+    {"region": "Asia", "city": "Bangkok", "country": "Thailand"},
     {"region": "Others", "city": "Sydney", "country": "Australia"},
     {"region": "Others", "city": "Rosario", "country": "Argentina"},
     {"region": "Others", "city": "Marrakech", "country": "Morocco"},
     {"region": "Others", "city": "Rio de Janeiro", "country": "Brazil"},
+    {"region": "Others", "city": "Panama City", "country": "Panama"},
 ]
 
 
